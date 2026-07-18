@@ -16,7 +16,7 @@ class ApiService {
 
   // Para el emulador Android.
   static const String baseUrl =
-      'http://10.0.2.2:5000/api/v1';
+      'https://gymcontrol-api-lm7l.onrender.com/api/v1';
 
   // =========================
   // AUTENTICACIÓN
