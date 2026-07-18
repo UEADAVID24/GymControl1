@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../database/database_helper.dart';
+import '../services/api_service.dart';
 import 'dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -11,8 +11,11 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController emailController = TextEditingController();
-  final TextEditingController passwordController = TextEditingController();
+  final TextEditingController emailController =
+      TextEditingController();
+
+  final TextEditingController passwordController =
+      TextEditingController();
 
   bool ocultarPassword = true;
   bool cargando = false;
@@ -31,7 +34,9 @@ class _LoginScreenState extends State<LoginScreen> {
     if (correo.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Complete el correo y la contraseña.'),
+          content: Text(
+            'Complete el correo y la contraseña.',
+          ),
         ),
       );
       return;
@@ -42,44 +47,55 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final usuario =
-          await DatabaseHelper.instance.getUserByEmail(correo);
+      final respuesta = await ApiService.instance.login(
+        correo: correo,
+        password: password,
+      );
+
+      final usuario = respuesta['usuario'];
+
+      if (usuario is! Map<String, dynamic>) {
+        throw const ApiException(
+          'No se recibieron correctamente los datos del usuario.',
+        );
+      }
+
+      final usuarioId = usuario['id'];
+      final nombreUsuario = usuario['nombre'];
+
+      if (usuarioId is! int || nombreUsuario == null) {
+        throw const ApiException(
+          'Los datos del usuario son inválidos.',
+        );
+      }
 
       if (!mounted) return;
-
-      if (usuario == null || usuario.password != password) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Correo o contraseña incorrectos.'),
-          ),
-        );
-        return;
-      }
-
-      if (usuario.id == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No se pudo identificar al usuario.'),
-          ),
-        );
-        return;
-      }
 
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (context) => DashboardScreen(
-            usuarioId: usuario.id!,
-            nombreUsuario: usuario.nombre,
+            usuarioId: usuarioId,
+            nombreUsuario: nombreUsuario.toString(),
           ),
         ),
       );
-    } catch (error) {
+    } on ApiException catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+        ),
+      );
+    } catch (_) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No se pudo iniciar sesión.'),
+          content: Text(
+            'No se pudo conectar con el servidor.',
+          ),
         ),
       );
     } finally {
@@ -113,6 +129,7 @@ class _LoginScreenState extends State<LoginScreen> {
               TextField(
                 controller: emailController,
                 keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
                   labelText: 'Correo electrónico',
                   border: OutlineInputBorder(),

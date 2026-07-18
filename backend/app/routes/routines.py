@@ -1,0 +1,329 @@
+from flask import Blueprint, jsonify, request
+from flask_jwt_extended import (
+    get_jwt_identity,
+    jwt_required,
+)
+
+from app.extensions import db
+from app.models.routine import Routine
+
+routines_bp = Blueprint(
+    "routines",
+    __name__,
+)
+
+
+def obtener_usuario_id() -> int:
+    return int(get_jwt_identity())
+
+
+@routines_bp.get("/")
+@jwt_required()
+def listar_rutinas():
+    usuario_id = obtener_usuario_id()
+
+    resultado = db.session.execute(
+        db.select(Routine)
+        .where(
+            Routine.usuario_id == usuario_id,
+        )
+        .order_by(
+            Routine.id.desc(),
+        )
+    ).scalars().all()
+
+    return jsonify(
+        {
+            "rutinas": [
+                rutina.to_dict()
+                for rutina in resultado
+            ],
+            "total": len(resultado),
+        }
+    ), 200
+
+
+@routines_bp.get("/<int:rutina_id>")
+@jwt_required()
+def obtener_rutina(rutina_id):
+    usuario_id = obtener_usuario_id()
+
+    rutina = db.session.execute(
+        db.select(Routine).where(
+            Routine.id == rutina_id,
+            Routine.usuario_id == usuario_id,
+        )
+    ).scalar_one_or_none()
+
+    if rutina is None:
+        return jsonify(
+            {
+                "error": "Rutina no encontrada",
+                "message": (
+                    "La rutina no existe o no pertenece "
+                    "al usuario autenticado."
+                ),
+            }
+        ), 404
+
+    return jsonify(
+        {
+            "rutina": rutina.to_dict(),
+        }
+    ), 200
+
+
+@routines_bp.post("/")
+@jwt_required()
+def crear_rutina():
+    usuario_id = obtener_usuario_id()
+    data = request.get_json(silent=True)
+
+    if not isinstance(data, dict):
+        return jsonify(
+            {
+                "error": "Solicitud inválida",
+                "message": (
+                    "Debe enviar los datos en formato JSON."
+                ),
+            }
+        ), 400
+
+    nombre = str(
+        data.get("nombre", "")
+    ).strip()
+
+    descripcion = str(
+        data.get("descripcion", "")
+    ).strip()
+
+    if len(nombre) < 3 or len(nombre) > 100:
+        return jsonify(
+            {
+                "error": "Nombre inválido",
+                "message": (
+                    "El nombre debe tener entre "
+                    "3 y 100 caracteres."
+                ),
+            }
+        ), 400
+
+    if len(descripcion) > 500:
+        return jsonify(
+            {
+                "error": "Descripción inválida",
+                "message": (
+                    "La descripción no puede superar "
+                    "los 500 caracteres."
+                ),
+            }
+        ), 400
+
+    rutina_existente = db.session.execute(
+        db.select(Routine).where(
+            Routine.usuario_id == usuario_id,
+            db.func.lower(Routine.nombre)
+            == nombre.lower(),
+        )
+    ).scalar_one_or_none()
+
+    if rutina_existente is not None:
+        return jsonify(
+            {
+                "error": "Rutina duplicada",
+                "message": (
+                    "Ya tienes una rutina con ese nombre."
+                ),
+            }
+        ), 409
+
+    nueva_rutina = Routine(
+        usuario_id=usuario_id,
+        nombre=nombre,
+        descripcion=descripcion,
+    )
+
+    try:
+        db.session.add(nueva_rutina)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+        return jsonify(
+            {
+                "error": "Error interno",
+                "message": (
+                    "No se pudo crear la rutina."
+                ),
+            }
+        ), 500
+
+    return jsonify(
+        {
+            "message": (
+                "Rutina creada correctamente."
+            ),
+            "rutina": nueva_rutina.to_dict(),
+        }
+    ), 201
+
+
+@routines_bp.put("/<int:rutina_id>")
+@jwt_required()
+def actualizar_rutina(rutina_id):
+    usuario_id = obtener_usuario_id()
+    data = request.get_json(silent=True)
+
+    if not isinstance(data, dict):
+        return jsonify(
+            {
+                "error": "Solicitud inválida",
+                "message": (
+                    "Debe enviar los datos en formato JSON."
+                ),
+            }
+        ), 400
+
+    rutina = db.session.execute(
+        db.select(Routine).where(
+            Routine.id == rutina_id,
+            Routine.usuario_id == usuario_id,
+        )
+    ).scalar_one_or_none()
+
+    if rutina is None:
+        return jsonify(
+            {
+                "error": "Rutina no encontrada",
+                "message": (
+                    "La rutina no existe o no pertenece "
+                    "al usuario autenticado."
+                ),
+            }
+        ), 404
+
+    nombre = str(
+        data.get("nombre", rutina.nombre)
+    ).strip()
+
+    descripcion = str(
+        data.get(
+            "descripcion",
+            rutina.descripcion,
+        )
+    ).strip()
+
+    if len(nombre) < 3 or len(nombre) > 100:
+        return jsonify(
+            {
+                "error": "Nombre inválido",
+                "message": (
+                    "El nombre debe tener entre "
+                    "3 y 100 caracteres."
+                ),
+            }
+        ), 400
+
+    if len(descripcion) > 500:
+        return jsonify(
+            {
+                "error": "Descripción inválida",
+                "message": (
+                    "La descripción no puede superar "
+                    "los 500 caracteres."
+                ),
+            }
+        ), 400
+
+    rutina_duplicada = db.session.execute(
+        db.select(Routine).where(
+            Routine.usuario_id == usuario_id,
+            Routine.id != rutina_id,
+            db.func.lower(Routine.nombre)
+            == nombre.lower(),
+        )
+    ).scalar_one_or_none()
+
+    if rutina_duplicada is not None:
+        return jsonify(
+            {
+                "error": "Rutina duplicada",
+                "message": (
+                    "Ya tienes otra rutina "
+                    "con ese nombre."
+                ),
+            }
+        ), 409
+
+    rutina.nombre = nombre
+    rutina.descripcion = descripcion
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+        return jsonify(
+            {
+                "error": "Error interno",
+                "message": (
+                    "No se pudo actualizar la rutina."
+                ),
+            }
+        ), 500
+
+    return jsonify(
+        {
+            "message": (
+                "Rutina actualizada correctamente."
+            ),
+            "rutina": rutina.to_dict(),
+        }
+    ), 200
+
+
+@routines_bp.delete("/<int:rutina_id>")
+@jwt_required()
+def eliminar_rutina(rutina_id):
+    usuario_id = obtener_usuario_id()
+
+    rutina = db.session.execute(
+        db.select(Routine).where(
+            Routine.id == rutina_id,
+            Routine.usuario_id == usuario_id,
+        )
+    ).scalar_one_or_none()
+
+    if rutina is None:
+        return jsonify(
+            {
+                "error": "Rutina no encontrada",
+                "message": (
+                    "La rutina no existe o no pertenece "
+                    "al usuario autenticado."
+                ),
+            }
+        ), 404
+
+    try:
+        db.session.delete(rutina)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+        return jsonify(
+            {
+                "error": "Error interno",
+                "message": (
+                    "No se pudo eliminar la rutina."
+                ),
+            }
+        ), 500
+
+    return jsonify(
+        {
+            "message": (
+                "Rutina eliminada correctamente."
+            ),
+        }
+    ), 200

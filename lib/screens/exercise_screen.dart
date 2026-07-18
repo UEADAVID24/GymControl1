@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../database/database_helper.dart';
 import '../models/exercise_model.dart';
+import '../services/api_service.dart';
 
 class ExerciseScreen extends StatefulWidget {
   final int rutinaId;
@@ -18,8 +18,6 @@ class ExerciseScreen extends StatefulWidget {
 }
 
 class _ExerciseScreenState extends State<ExerciseScreen> {
-  final DatabaseHelper _databaseHelper = DatabaseHelper.instance;
-
   List<ExerciseModel> _ejercicios = [];
   bool _cargando = true;
 
@@ -31,8 +29,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
   Future<void> _cargarEjercicios() async {
     try {
-      final resultado =
-          await _databaseHelper.getExercisesByRoutine(widget.rutinaId);
+      final resultado = await ApiService.instance.getExercises(
+        rutinaId: widget.rutinaId,
+      );
 
       if (!mounted) return;
 
@@ -40,7 +39,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
         _ejercicios = resultado;
         _cargando = false;
       });
-    } catch (error) {
+    } on ApiException catch (error) {
       if (!mounted) return;
 
       setState(() {
@@ -49,8 +48,20 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
+          content: Text(error.message),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _cargando = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
           content: Text(
-            'No se pudieron cargar los ejercicios: $error',
+            'No se pudo conectar con el servidor.',
           ),
         ),
       );
@@ -107,7 +118,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                           TextCapitalization.sentences,
                       decoration: const InputDecoration(
                         labelText: 'Nombre del ejercicio',
-                        prefixIcon: Icon(Icons.fitness_center),
+                        prefixIcon: Icon(
+                          Icons.fitness_center,
+                        ),
                         border: OutlineInputBorder(),
                       ),
                     ),
@@ -137,13 +150,16 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                     TextField(
                       controller: pesoController,
                       enabled: !guardando,
-                      keyboardType: const TextInputType.numberWithOptions(
+                      keyboardType:
+                          const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
                       decoration: const InputDecoration(
                         labelText: 'Peso en kg',
                         hintText: 'Ejemplo: 20',
-                        prefixIcon: Icon(Icons.monitor_weight),
+                        prefixIcon: Icon(
+                          Icons.monitor_weight,
+                        ),
                         border: OutlineInputBorder(),
                       ),
                     ),
@@ -155,7 +171,10 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                   onPressed: guardando
                       ? null
                       : () {
-                          Navigator.pop(dialogContext, false);
+                          Navigator.pop(
+                            dialogContext,
+                            false,
+                          );
                         },
                   child: const Text('Cancelar'),
                 ),
@@ -182,12 +201,13 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                               ? 0.0
                               : double.tryParse(textoPeso);
 
-                          if (nombre.isEmpty) {
-                            ScaffoldMessenger.of(dialogContext)
-                                .showSnackBar(
+                          if (nombre.length < 2) {
+                            ScaffoldMessenger.of(
+                              dialogContext,
+                            ).showSnackBar(
                               const SnackBar(
                                 content: Text(
-                                  'Ingrese el nombre del ejercicio.',
+                                  'El nombre debe tener al menos 2 caracteres.',
                                 ),
                               ),
                             );
@@ -195,8 +215,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                           }
 
                           if (series == null || series <= 0) {
-                            ScaffoldMessenger.of(dialogContext)
-                                .showSnackBar(
+                            ScaffoldMessenger.of(
+                              dialogContext,
+                            ).showSnackBar(
                               const SnackBar(
                                 content: Text(
                                   'Ingrese una cantidad válida de series.',
@@ -208,8 +229,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
                           if (repeticiones == null ||
                               repeticiones <= 0) {
-                            ScaffoldMessenger.of(dialogContext)
-                                .showSnackBar(
+                            ScaffoldMessenger.of(
+                              dialogContext,
+                            ).showSnackBar(
                               const SnackBar(
                                 content: Text(
                                   'Ingrese una cantidad válida de repeticiones.',
@@ -220,8 +242,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                           }
 
                           if (peso == null || peso < 0) {
-                            ScaffoldMessenger.of(dialogContext)
-                                .showSnackBar(
+                            ScaffoldMessenger.of(
+                              dialogContext,
+                            ).showSnackBar(
                               const SnackBar(
                                 content: Text(
                                   'Ingrese un peso válido.',
@@ -236,40 +259,71 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                           });
 
                           try {
-                            final ejercicioGuardado =
-                                ExerciseModel(
-                              id: ejercicio?.id,
-                              rutinaId: widget.rutinaId,
-                              nombre: nombre,
-                              series: series,
-                              repeticiones: repeticiones,
-                              peso: peso,
-                            );
-
                             if (esEdicion) {
-                              await _databaseHelper.updateExercise(
-                                ejercicioGuardado,
+                              if (ejercicio.id == null) {
+                                throw const ApiException(
+                                  'El ejercicio no tiene identificador.',
+                                );
+                              }
+
+                              await ApiService.instance
+                                  .updateExercise(
+                                ejercicioId: ejercicio.id!,
+                                nombre: nombre,
+                                series: series,
+                                repeticiones: repeticiones,
+                                peso: peso,
                               );
                             } else {
-                              await _databaseHelper.insertExercise(
-                                ejercicioGuardado,
+                              await ApiService.instance
+                                  .createExercise(
+                                rutinaId: widget.rutinaId,
+                                nombre: nombre,
+                                series: series,
+                                repeticiones: repeticiones,
+                                peso: peso,
                               );
                             }
 
-                            if (!mounted) return;
+                            if (!dialogContext.mounted) {
+                              return;
+                            }
 
-                            Navigator.pop(dialogContext, true);
-                          } catch (error) {
+                            Navigator.pop(
+                              dialogContext,
+                              true,
+                            );
+                          } on ApiException catch (error) {
                             setDialogState(() {
                               guardando = false;
                             });
 
-                            if (!mounted) return;
+                            if (!dialogContext.mounted) {
+                              return;
+                            }
 
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            ScaffoldMessenger.of(
+                              dialogContext,
+                            ).showSnackBar(
                               SnackBar(
+                                content: Text(error.message),
+                              ),
+                            );
+                          } catch (_) {
+                            setDialogState(() {
+                              guardando = false;
+                            });
+
+                            if (!dialogContext.mounted) {
+                              return;
+                            }
+
+                            ScaffoldMessenger.of(
+                              dialogContext,
+                            ).showSnackBar(
+                              const SnackBar(
                                 content: Text(
-                                  'No se pudo guardar el ejercicio: $error',
+                                  'No se pudo conectar con el servidor.',
                                 ),
                               ),
                             );
@@ -284,7 +338,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                           ),
                         )
                       : Text(
-                          esEdicion ? 'Actualizar' : 'Guardar',
+                          esEdicion
+                              ? 'Actualizar'
+                              : 'Guardar',
                         ),
                 ),
               ],
@@ -332,13 +388,19 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(dialogContext, false);
+                Navigator.pop(
+                  dialogContext,
+                  false,
+                );
               },
               child: const Text('Cancelar'),
             ),
             FilledButton(
               onPressed: () {
-                Navigator.pop(dialogContext, true);
+                Navigator.pop(
+                  dialogContext,
+                  true,
+                );
               },
               child: const Text('Eliminar'),
             ),
@@ -350,9 +412,8 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     if (confirmar != true) return;
 
     try {
-      await _databaseHelper.deleteExercise(
-        ejercicio.id!,
-        widget.rutinaId,
+      await ApiService.instance.deleteExercise(
+        ejercicioId: ejercicio.id!,
       );
 
       await _cargarEjercicios();
@@ -366,13 +427,21 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
           ),
         ),
       );
-    } catch (error) {
+    } on ApiException catch (error) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
+          content: Text(error.message),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
           content: Text(
-            'No se pudo eliminar el ejercicio: $error',
+            'No se pudo conectar con el servidor.',
           ),
         ),
       );
@@ -465,8 +534,16 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.nombreRutina),
+        actions: [
+          IconButton(
+            tooltip: 'Actualizar',
+            onPressed: _cargarEjercicios,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton:
+          FloatingActionButton.extended(
         onPressed: () {
           _mostrarFormulario();
         },

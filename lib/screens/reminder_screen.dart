@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../database/database_helper.dart';
 import '../models/reminder_model.dart';
+import '../services/api_service.dart';
 import '../services/notification_service.dart';
 
 class ReminderScreen extends StatefulWidget {
@@ -13,11 +13,11 @@ class ReminderScreen extends StatefulWidget {
   });
 
   @override
-  State<ReminderScreen> createState() => _ReminderScreenState();
+  State<ReminderScreen> createState() =>
+      _ReminderScreenState();
 }
 
 class _ReminderScreenState extends State<ReminderScreen> {
-  final DatabaseHelper _databaseHelper = DatabaseHelper.instance;
   final NotificationService _notificationService =
       NotificationService.instance;
 
@@ -42,9 +42,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
 
   Future<void> _cargarRecordatorios() async {
     try {
-      final recordatorios = await _databaseHelper.getRemindersByUser(
-        widget.usuarioId,
-      );
+      final recordatorios =
+          await ApiService.instance.getReminders();
 
       if (!mounted) return;
 
@@ -52,7 +51,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
         _recordatorios = recordatorios;
         _cargando = false;
       });
-    } catch (error) {
+    } on ApiException catch (error) {
       if (!mounted) return;
 
       setState(() {
@@ -61,8 +60,20 @@ class _ReminderScreenState extends State<ReminderScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
+          content: Text(error.message),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _cargando = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
           content: Text(
-            'No se pudieron cargar los recordatorios: $error',
+            'No se pudo conectar con el servidor.',
           ),
         ),
       );
@@ -78,12 +89,10 @@ class _ReminderScreenState extends State<ReminderScreen> {
   }
 
   String _formatearHora(int hora, int minuto) {
-    final timeOfDay = TimeOfDay(
+    return TimeOfDay(
       hour: hora,
       minute: minuto,
-    );
-
-    return timeOfDay.format(context);
+    ).format(context);
   }
 
   Future<void> _programarNotificacion(
@@ -96,7 +105,9 @@ class _ReminderScreenState extends State<ReminderScreen> {
     await _notificationService.scheduleWeeklyNotification(
       id: recordatorio.id!,
       title: recordatorio.titulo,
-      body: recordatorio.mensaje,
+      body: recordatorio.mensaje.isEmpty
+          ? 'Es momento de realizar tu entrenamiento.'
+          : recordatorio.mensaje,
       dayOfWeek: recordatorio.diaSemana,
       hour: recordatorio.hora,
       minute: recordatorio.minuto,
@@ -121,16 +132,21 @@ class _ReminderScreenState extends State<ReminderScreen> {
       minute: recordatorio?.minuto ?? 0,
     );
 
-    final resultado = await showDialog<bool>(
+    final esEdicion = recordatorio != null;
+
+    final guardado = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (dialogContext) {
+        bool guardando = false;
+
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
               title: Text(
-                recordatorio == null
-                    ? 'Nuevo recordatorio'
-                    : 'Editar recordatorio',
+                esEdicion
+                    ? 'Editar recordatorio'
+                    : 'Nuevo recordatorio',
               ),
               content: SingleChildScrollView(
                 child: Column(
@@ -138,97 +154,242 @@ class _ReminderScreenState extends State<ReminderScreen> {
                   children: [
                     TextField(
                       controller: tituloController,
-                      textCapitalization: TextCapitalization.sentences,
+                      enabled: !guardando,
+                      maxLength: 100,
+                      textCapitalization:
+                          TextCapitalization.sentences,
                       decoration: const InputDecoration(
                         labelText: 'Título',
                         prefixIcon: Icon(Icons.title),
+                        border: OutlineInputBorder(),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: mensajeController,
+                      enabled: !guardando,
                       maxLines: 3,
-                      textCapitalization: TextCapitalization.sentences,
+                      maxLength: 300,
+                      textCapitalization:
+                          TextCapitalization.sentences,
                       decoration: const InputDecoration(
                         labelText: 'Mensaje',
-                        prefixIcon: Icon(Icons.message_outlined),
+                        prefixIcon: Icon(
+                          Icons.message_outlined,
+                        ),
                         alignLabelWithHint: true,
+                        border: OutlineInputBorder(),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     DropdownButtonFormField<int>(
                       value: diaSeleccionado,
                       decoration: const InputDecoration(
                         labelText: 'Día de la semana',
-                        prefixIcon: Icon(Icons.calendar_today),
+                        prefixIcon: Icon(
+                          Icons.calendar_today,
+                        ),
+                        border: OutlineInputBorder(),
                       ),
                       items: List.generate(
                         _diasSemana.length,
                         (index) {
                           return DropdownMenuItem<int>(
                             value: index + 1,
-                            child: Text(_diasSemana[index]),
+                            child: Text(
+                              _diasSemana[index],
+                            ),
                           );
                         },
                       ),
-                      onChanged: (value) {
-                        if (value == null) return;
+                      onChanged: guardando
+                          ? null
+                          : (value) {
+                              if (value == null) return;
 
-                        setDialogState(() {
-                          diaSeleccionado = value;
-                        });
-                      },
+                              setDialogState(() {
+                                diaSeleccionado = value;
+                              });
+                            },
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.access_time),
+                      leading: const Icon(
+                        Icons.access_time,
+                      ),
                       title: const Text('Hora'),
                       subtitle: Text(
-                        horaSeleccionada.format(context),
+                        horaSeleccionada.format(
+                          dialogContext,
+                        ),
                       ),
                       trailing: const Icon(Icons.edit),
-                      onTap: () async {
-                        final nuevaHora = await showTimePicker(
-                          context: context,
-                          initialTime: horaSeleccionada,
-                        );
+                      onTap: guardando
+                          ? null
+                          : () async {
+                              final nuevaHora =
+                                  await showTimePicker(
+                                context: dialogContext,
+                                initialTime:
+                                    horaSeleccionada,
+                              );
 
-                        if (nuevaHora == null) return;
+                              if (nuevaHora == null) return;
 
-                        setDialogState(() {
-                          horaSeleccionada = nuevaHora;
-                        });
-                      },
+                              setDialogState(() {
+                                horaSeleccionada =
+                                    nuevaHora;
+                              });
+                            },
                     ),
                   ],
                 ),
               ),
               actions: [
                 TextButton(
-                  onPressed: () {
-                    Navigator.pop(dialogContext, false);
-                  },
+                  onPressed: guardando
+                      ? null
+                      : () {
+                          Navigator.pop(
+                            dialogContext,
+                            false,
+                          );
+                        },
                   child: const Text('Cancelar'),
                 ),
                 FilledButton(
-                  onPressed: () {
-                    final titulo = tituloController.text.trim();
+                  onPressed: guardando
+                      ? null
+                      : () async {
+                          final titulo =
+                              tituloController.text.trim();
 
-                    if (titulo.isEmpty) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Ingrese un título para el recordatorio.',
+                          final mensaje =
+                              mensajeController.text.trim();
+
+                          if (titulo.isEmpty) {
+                            ScaffoldMessenger.of(
+                              dialogContext,
+                            ).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Ingrese un título para el recordatorio.',
+                                ),
+                              ),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() {
+                            guardando = true;
+                          });
+
+                          try {
+                            ReminderModel recordatorioGuardado;
+
+                            if (esEdicion) {
+                              if (recordatorio.id == null) {
+                                throw const ApiException(
+                                  'El recordatorio no tiene identificador.',
+                                );
+                              }
+
+                              recordatorioGuardado =
+                                  await ApiService.instance
+                                      .updateReminder(
+                                recordatorioId:
+                                    recordatorio.id!,
+                                titulo: titulo,
+                                mensaje: mensaje,
+                                diaSemana:
+                                    diaSeleccionado,
+                                hora:
+                                    horaSeleccionada.hour,
+                                minuto:
+                                    horaSeleccionada.minute,
+                                activo:
+                                    recordatorio.activo,
+                              );
+                            } else {
+                              recordatorioGuardado =
+                                  await ApiService.instance
+                                      .createReminder(
+                                titulo: titulo,
+                                mensaje: mensaje,
+                                diaSemana:
+                                    diaSeleccionado,
+                                hora:
+                                    horaSeleccionada.hour,
+                                minuto:
+                                    horaSeleccionada.minute,
+                                activo: true,
+                              );
+                            }
+
+                            if (recordatorioGuardado.activo) {
+                              await _programarNotificacion(
+                                recordatorioGuardado,
+                              );
+                            } else if (recordatorioGuardado.id !=
+                                null) {
+                              await _notificationService
+                                  .cancelNotification(
+                                recordatorioGuardado.id!,
+                              );
+                            }
+
+                            if (!dialogContext.mounted) return;
+
+                            Navigator.pop(
+                              dialogContext,
+                              true,
+                            );
+                          } on ApiException catch (error) {
+                            setDialogState(() {
+                              guardando = false;
+                            });
+
+                            if (!dialogContext.mounted) return;
+
+                            ScaffoldMessenger.of(
+                              dialogContext,
+                            ).showSnackBar(
+                              SnackBar(
+                                content: Text(error.message),
+                              ),
+                            );
+                          } catch (error) {
+                            setDialogState(() {
+                              guardando = false;
+                            });
+
+                            if (!dialogContext.mounted) return;
+
+                            ScaffoldMessenger.of(
+                              dialogContext,
+                            ).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'No se pudo guardar o programar el recordatorio: $error',
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                  child: guardando
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
                           ),
+                        )
+                      : Text(
+                          esEdicion
+                              ? 'Actualizar'
+                              : 'Guardar',
                         ),
-                      );
-                      return;
-                    }
-
-                    Navigator.pop(dialogContext, true);
-                  },
-                  child: const Text('Guardar'),
                 ),
               ],
             );
@@ -237,84 +398,24 @@ class _ReminderScreenState extends State<ReminderScreen> {
       },
     );
 
-    if (resultado != true) {
-      tituloController.dispose();
-      mensajeController.dispose();
-      return;
-    }
+    tituloController.dispose();
+    mensajeController.dispose();
 
-    final recordatorioPreparado = ReminderModel(
-      id: recordatorio?.id,
-      usuarioId: widget.usuarioId,
-      titulo: tituloController.text.trim(),
-      mensaje: mensajeController.text.trim(),
-      diaSemana: diaSeleccionado,
-      hora: horaSeleccionada.hour,
-      minuto: horaSeleccionada.minute,
-      activo: recordatorio?.activo ?? true,
+    if (guardado != true) return;
+
+    await _cargarRecordatorios();
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          esEdicion
+              ? 'Recordatorio actualizado correctamente.'
+              : 'Recordatorio guardado y programado.',
+        ),
+      ),
     );
-
-    try {
-      ReminderModel recordatorioGuardado;
-
-      if (recordatorio == null) {
-        final nuevoId = await _databaseHelper.insertReminder(
-          recordatorioPreparado,
-        );
-
-        recordatorioGuardado = ReminderModel(
-          id: nuevoId,
-          usuarioId: recordatorioPreparado.usuarioId,
-          titulo: recordatorioPreparado.titulo,
-          mensaje: recordatorioPreparado.mensaje,
-          diaSemana: recordatorioPreparado.diaSemana,
-          hora: recordatorioPreparado.hora,
-          minuto: recordatorioPreparado.minuto,
-          activo: recordatorioPreparado.activo,
-        );
-      } else {
-        await _databaseHelper.updateReminder(
-          recordatorioPreparado,
-        );
-
-        recordatorioGuardado = recordatorioPreparado;
-      }
-
-      if (recordatorioGuardado.activo) {
-        await _programarNotificacion(recordatorioGuardado);
-      } else if (recordatorioGuardado.id != null) {
-        await _notificationService.cancelNotification(
-          recordatorioGuardado.id!,
-        );
-      }
-
-      await _cargarRecordatorios();
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            recordatorio == null
-                ? 'Recordatorio guardado y programado.'
-                : 'Recordatorio actualizado correctamente.',
-          ),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'No se pudo guardar o programar el recordatorio: $error',
-          ),
-        ),
-      );
-    } finally {
-      tituloController.dispose();
-      mensajeController.dispose();
-    }
   }
 
   Future<void> _cambiarEstado(
@@ -324,28 +425,17 @@ class _ReminderScreenState extends State<ReminderScreen> {
     if (recordatorio.id == null) return;
 
     try {
-      await _databaseHelper.updateReminderStatus(
-        recordatorio.id!,
-        widget.usuarioId,
-        nuevoEstado,
+      final actualizado =
+          await ApiService.instance.updateReminderStatus(
+        recordatorioId: recordatorio.id!,
+        activo: nuevoEstado,
       );
 
-      if (nuevoEstado) {
-        final recordatorioActivo = ReminderModel(
-          id: recordatorio.id,
-          usuarioId: recordatorio.usuarioId,
-          titulo: recordatorio.titulo,
-          mensaje: recordatorio.mensaje,
-          diaSemana: recordatorio.diaSemana,
-          hora: recordatorio.hora,
-          minuto: recordatorio.minuto,
-          activo: true,
-        );
-
-        await _programarNotificacion(recordatorioActivo);
+      if (actualizado.activo) {
+        await _programarNotificacion(actualizado);
       } else {
         await _notificationService.cancelNotification(
-          recordatorio.id!,
+          actualizado.id!,
         );
       }
 
@@ -360,6 +450,14 @@ class _ReminderScreenState extends State<ReminderScreen> {
                 ? 'Recordatorio activado.'
                 : 'Recordatorio desactivado.',
           ),
+        ),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
         ),
       );
     } catch (error) {
@@ -384,20 +482,29 @@ class _ReminderScreenState extends State<ReminderScreen> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Eliminar recordatorio'),
+          title: const Text(
+            'Eliminar recordatorio',
+          ),
           content: Text(
-            '¿Deseas eliminar el recordatorio "${recordatorio.titulo}"?',
+            '¿Deseas eliminar el recordatorio '
+            '"${recordatorio.titulo}"?',
           ),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(dialogContext, false);
+                Navigator.pop(
+                  dialogContext,
+                  false,
+                );
               },
               child: const Text('Cancelar'),
             ),
             FilledButton(
               onPressed: () {
-                Navigator.pop(dialogContext, true);
+                Navigator.pop(
+                  dialogContext,
+                  true,
+                );
               },
               child: const Text('Eliminar'),
             ),
@@ -413,9 +520,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
         recordatorio.id!,
       );
 
-      await _databaseHelper.deleteReminder(
-        recordatorio.id!,
-        widget.usuarioId,
+      await ApiService.instance.deleteReminder(
+        recordatorioId: recordatorio.id!,
       );
 
       await _cargarRecordatorios();
@@ -427,6 +533,14 @@ class _ReminderScreenState extends State<ReminderScreen> {
           content: Text(
             'Recordatorio y notificación eliminados.',
           ),
+        ),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
         ),
       );
     } catch (error) {
@@ -468,7 +582,9 @@ class _ReminderScreenState extends State<ReminderScreen> {
     }
   }
 
-  Widget _construirTarjeta(ReminderModel recordatorio) {
+  Widget _construirTarjeta(
+    ReminderModel recordatorio,
+  ) {
     final mensaje = recordatorio.mensaje.trim();
 
     return Card(
@@ -489,7 +605,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
           ),
         ),
         subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 6),
             Text(
@@ -503,7 +620,8 @@ class _ReminderScreenState extends State<ReminderScreen> {
             const SizedBox(height: 8),
             Text(
               'Toca para editar · Mantén presionado para eliminar',
-              style: Theme.of(context).textTheme.bodySmall,
+              style:
+                  Theme.of(context).textTheme.bodySmall,
             ),
           ],
         ),
@@ -534,17 +652,27 @@ class _ReminderScreenState extends State<ReminderScreen> {
       appBar: AppBar(
         title: const Text('Recordatorios'),
         actions: [
+          IconButton(
+            tooltip: 'Actualizar',
+            onPressed: _cargarRecordatorios,
+            icon: const Icon(Icons.refresh),
+          ),
           if (_recordatorios.isNotEmpty)
             IconButton(
               tooltip: 'Probar notificación',
               onPressed: () {
-                _probarNotificacion(_recordatorios.first);
+                _probarNotificacion(
+                  _recordatorios.first,
+                );
               },
-              icon: const Icon(Icons.notification_add),
+              icon: const Icon(
+                Icons.notification_add,
+              ),
             ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton:
+          FloatingActionButton.extended(
         onPressed: () {
           _mostrarFormulario();
         },
@@ -559,8 +687,10 @@ class _ReminderScreenState extends State<ReminderScreen> {
               onRefresh: _cargarRecordatorios,
               child: _recordatorios.isEmpty
                   ? ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.all(24),
+                      physics:
+                          const AlwaysScrollableScrollPhysics(),
+                      padding:
+                          const EdgeInsets.all(24),
                       children: const [
                         SizedBox(height: 120),
                         Icon(
@@ -570,23 +700,31 @@ class _ReminderScreenState extends State<ReminderScreen> {
                         SizedBox(height: 16),
                         Text(
                           'No tienes recordatorios.',
-                          textAlign: TextAlign.center,
+                          textAlign:
+                              TextAlign.center,
                           style: TextStyle(
                             fontSize: 20,
-                            fontWeight: FontWeight.bold,
+                            fontWeight:
+                                FontWeight.bold,
                           ),
                         ),
                         SizedBox(height: 8),
                         Text(
                           'Presiona el botón Agregar para crear uno.',
-                          textAlign: TextAlign.center,
+                          textAlign:
+                              TextAlign.center,
                         ),
                       ],
                     )
                   : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _recordatorios.length,
-                      itemBuilder: (context, index) {
+                      physics:
+                          const AlwaysScrollableScrollPhysics(),
+                      padding:
+                          const EdgeInsets.all(16),
+                      itemCount:
+                          _recordatorios.length,
+                      itemBuilder:
+                          (context, index) {
                         return _construirTarjeta(
                           _recordatorios[index],
                         );

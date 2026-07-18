@@ -1,4 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../database/database_helper.dart';
@@ -17,13 +23,247 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  final ImagePicker _imagePicker = ImagePicker();
+
   UserModel? usuario;
+  File? fotoPerfil;
   bool cargando = true;
 
   @override
   void initState() {
     super.initState();
-    cargarUsuario();
+    cargarDatosIniciales();
+  }
+
+  Future<void> cargarDatosIniciales() async {
+    await Future.wait([
+      cargarUsuario(),
+      cargarFotoPerfil(),
+    ]);
+  }
+
+  String get _claveFotoPerfil =>
+      'foto_perfil_usuario_${widget.usuarioId}';
+
+  Future<void> cargarFotoPerfil() async {
+    final preferences =
+        await SharedPreferences.getInstance();
+
+    final rutaGuardada =
+        preferences.getString(_claveFotoPerfil);
+
+    if (rutaGuardada == null ||
+        rutaGuardada.isEmpty) {
+      return;
+    }
+
+    final archivo = File(rutaGuardada);
+
+    if (!await archivo.exists()) {
+      await preferences.remove(_claveFotoPerfil);
+      return;
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      fotoPerfil = archivo;
+    });
+  }
+
+  Future<void> seleccionarFoto(
+    ImageSource origen,
+  ) async {
+    try {
+      final imagen = await _imagePicker.pickImage(
+        source: origen,
+        maxWidth: 1200,
+        maxHeight: 1200,
+        imageQuality: 85,
+        requestFullMetadata: false,
+      );
+
+      if (imagen == null) {
+        return;
+      }
+
+      final directorio =
+          await getApplicationDocumentsDirectory();
+
+      final carpetaFotos = Directory(
+        p.join(
+          directorio.path,
+          'profile_photos',
+        ),
+      );
+
+      if (!await carpetaFotos.exists()) {
+        await carpetaFotos.create(
+          recursive: true,
+        );
+      }
+
+      final extension =
+          p.extension(imagen.path).isEmpty
+              ? '.jpg'
+              : p.extension(imagen.path);
+
+      final rutaDestino = p.join(
+        carpetaFotos.path,
+        'usuario_${widget.usuarioId}$extension',
+      );
+
+      if (fotoPerfil != null &&
+          await fotoPerfil!.exists() &&
+          fotoPerfil!.path != rutaDestino) {
+        await fotoPerfil!.delete();
+      }
+
+      final archivoCopiado =
+          await File(imagen.path).copy(
+        rutaDestino,
+      );
+
+      final preferences =
+          await SharedPreferences.getInstance();
+
+      await preferences.setString(
+        _claveFotoPerfil,
+        archivoCopiado.path,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        fotoPerfil = archivoCopiado;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Foto de perfil actualizada.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'No se pudo seleccionar la foto: $error',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> eliminarFotoPerfil() async {
+    try {
+      if (fotoPerfil != null &&
+          await fotoPerfil!.exists()) {
+        await fotoPerfil!.delete();
+      }
+
+      final preferences =
+          await SharedPreferences.getInstance();
+
+      await preferences.remove(_claveFotoPerfil);
+
+      if (!mounted) return;
+
+      setState(() {
+        fotoPerfil = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Foto de perfil eliminada.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No se pudo eliminar la foto.',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> mostrarOpcionesFoto() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.only(
+              bottom: 12,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const ListTile(
+                  title: Text(
+                    'Foto de perfil',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.photo_library,
+                  ),
+                  title: const Text(
+                    'Elegir de la galería',
+                  ),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    seleccionarFoto(
+                      ImageSource.gallery,
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.camera_alt,
+                  ),
+                  title: const Text(
+                    'Tomar una foto',
+                  ),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    seleccionarFoto(
+                      ImageSource.camera,
+                    );
+                  },
+                ),
+                if (fotoPerfil != null)
+                  ListTile(
+                    leading: const Icon(
+                      Icons.delete_outline,
+                    ),
+                    title: const Text(
+                      'Eliminar foto',
+                    ),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      eliminarFotoPerfil();
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> cargarUsuario() async {
@@ -554,11 +794,60 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   padding: const EdgeInsets.all(20),
                   children: [
                     const SizedBox(height: 10),
-                    const CircleAvatar(
-                      radius: 55,
-                      child: Icon(
-                        Icons.person,
-                        size: 70,
+                    Center(
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          InkWell(
+                            onTap: mostrarOpcionesFoto,
+                            borderRadius:
+                                BorderRadius.circular(60),
+                            child: CircleAvatar(
+                              radius: 55,
+                              backgroundImage:
+                                  fotoPerfil != null
+                                      ? FileImage(
+                                          fotoPerfil!,
+                                        )
+                                      : null,
+                              child: fotoPerfil == null
+                                  ? const Icon(
+                                      Icons.person,
+                                      size: 70,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                          Positioned(
+                            right: -2,
+                            bottom: -2,
+                            child: Material(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primary,
+                              shape: const CircleBorder(),
+                              child: InkWell(
+                                onTap:
+                                    mostrarOpcionesFoto,
+                                customBorder:
+                                    const CircleBorder(),
+                                child: Padding(
+                                  padding:
+                                      const EdgeInsets.all(
+                                    10,
+                                  ),
+                                  child: Icon(
+                                    Icons.camera_alt,
+                                    size: 20,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onPrimary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 18),

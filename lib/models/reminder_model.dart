@@ -28,20 +28,26 @@ class ReminderModel {
       'dia_semana': diaSemana,
       'hora': hora,
       'minuto': minuto,
-      'activo': activo ? 1 : 0,
+      'activo': activo,
     };
   }
 
   factory ReminderModel.fromMap(Map<String, dynamic> map) {
+    final activoValue = map['activo'];
+
     return ReminderModel(
       id: map['id'] as int?,
       usuarioId: map['usuario_id'] as int,
-      titulo: map['titulo'] as String,
-      mensaje: map['mensaje'] as String,
+      titulo: map['titulo']?.toString() ?? '',
+      mensaje: map['mensaje']?.toString() ?? '',
       diaSemana: map['dia_semana'] as int,
       hora: map['hora'] as int,
       minuto: map['minuto'] as int,
-      activo: (map['activo'] as int) == 1,
+      activo: activoValue is bool
+          ? activoValue
+          : activoValue is num
+              ? activoValue == 1
+              : activoValue.toString().toLowerCase() == 'true',
     );
   }
 

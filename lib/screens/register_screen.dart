@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../database/database_helper.dart';
-import '../models/user_model.dart';
+
+import '../services/api_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -13,6 +13,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final nombreController = TextEditingController();
   final correoController = TextEditingController();
   final passwordController = TextEditingController();
+
+  bool ocultarPassword = true;
+  bool cargando = false;
 
   @override
   void dispose() {
@@ -36,10 +39,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    if (!correo.contains('@')) {
+    if (nombre.length < 3) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Ingrese un correo electrónico válido.'),
+          content: Text(
+            'El nombre debe tener al menos 3 caracteres.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (!correo.contains('@') || !correo.contains('.')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Ingrese un correo electrónico válido.',
+          ),
         ),
       );
       return;
@@ -48,46 +64,64 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (password.length < 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('La contraseña debe tener mínimo 6 caracteres.'),
+          content: Text(
+            'La contraseña debe tener mínimo 6 caracteres.',
+          ),
         ),
       );
       return;
     }
 
-    // Verificar si el correo ya existe
-    final usuarioExistente =
-        await DatabaseHelper.instance.getUserByEmail(correo);
+    setState(() {
+      cargando = true;
+    });
 
-    if (usuarioExistente != null) {
+    try {
+      await ApiService.instance.register(
+        nombre: nombre,
+        correo: correo,
+        password: password,
+      );
+
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Este correo ya está registrado.'),
+          content: Text(
+            'Cuenta creada correctamente. Ahora inicia sesión.',
+          ),
         ),
       );
-      return;
+
+      Navigator.pushReplacementNamed(
+        context,
+        '/login',
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No se pudo conectar con el servidor.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          cargando = false;
+        });
+      }
     }
-
-    // Crear objeto usuario
-    final nuevoUsuario = UserModel(
-      nombre: nombre,
-      correo: correo,
-      password: password,
-    );
-
-    // Guardar en SQLite
-    await DatabaseHelper.instance.insertUser(nuevoUsuario);
-
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Cuenta creada correctamente.'),
-      ),
-    );
-
-    Navigator.pushReplacementNamed(context, '/login');
   }
 
   @override
@@ -111,6 +145,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
               const SizedBox(height: 24),
               TextField(
                 controller: nombreController,
+                enabled: !cargando,
+                textCapitalization:
+                    TextCapitalization.words,
+                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
                   labelText: 'Nombre',
                   border: OutlineInputBorder(),
@@ -120,7 +158,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
               const SizedBox(height: 16),
               TextField(
                 controller: correoController,
+                enabled: !cargando,
                 keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
                   labelText: 'Correo electrónico',
                   border: OutlineInputBorder(),
@@ -130,26 +170,57 @@ class _RegisterScreenState extends State<RegisterScreen> {
               const SizedBox(height: 16),
               TextField(
                 controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
+                enabled: !cargando,
+                obscureText: ocultarPassword,
+                onSubmitted: (_) => registrarUsuario(),
+                decoration: InputDecoration(
                   labelText: 'Contraseña',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.lock),
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    onPressed: cargando
+                        ? null
+                        : () {
+                            setState(() {
+                              ocultarPassword =
+                                  !ocultarPassword;
+                            });
+                          },
+                    icon: Icon(
+                      ocultarPassword
+                          ? Icons.visibility
+                          : Icons.visibility_off,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: registrarUsuario,
-                  child: const Text('Registrarse'),
+                  onPressed:
+                      cargando ? null : registrarUsuario,
+                  child: cargando
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text('Registrarse'),
                 ),
               ),
               const SizedBox(height: 12),
               TextButton(
-                onPressed: () {
-                  Navigator.pushReplacementNamed(context, '/login');
-                },
+                onPressed: cargando
+                    ? null
+                    : () {
+                        Navigator.pushReplacementNamed(
+                          context,
+                          '/login',
+                        );
+                      },
                 child: const Text(
                   '¿Ya tienes una cuenta? Inicia sesión',
                 ),
