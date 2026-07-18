@@ -26,3 +26,12 @@ backend/.env
 # Sistema
 .DS_Store
 Thumbs.db
+# IntelliJ / Android Studio
+.idea/
+*.iml
+
+# Python
+**/__pycache__/
+
+# Logs de Java
+hs_err_pid*.log
