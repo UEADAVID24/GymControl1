@@ -6,6 +6,7 @@ import '../models/training_model.dart';
 import '../models/weight_model.dart';
 import '../services/api_service.dart';
 import 'calendar_screen.dart';
+import 'optimization_screen.dart';
 import 'profile_screen.dart';
 import 'progress_screen.dart';
 import 'reminder_screen.dart';
@@ -438,6 +439,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           usuarioId:
                               widget.usuarioId,
                         ),
+                      );
+                    },
+                  ),
+                  DashboardOption(
+                    icon: Icons.speed,
+                    title: 'Optimización',
+                    onTap: () {
+                      _abrirPantalla(
+                        const OptimizationScreen(),
                       );
                     },
                   ),

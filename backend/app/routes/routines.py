@@ -1,20 +1,39 @@
+from time import perf_counter
+
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import (
     get_jwt_identity,
     jwt_required,
 )
 
-from app.extensions import db
+from app.extensions import cache, db
 from app.models.routine import Routine
+
 
 routines_bp = Blueprint(
     "routines",
     __name__,
 )
 
+CACHE_TTL_SEGUNDOS = 60
+
 
 def obtener_usuario_id() -> int:
     return int(get_jwt_identity())
+
+
+def obtener_clave_cache(
+    usuario_id: int,
+) -> str:
+    return f"rutinas_usuario:{usuario_id}"
+
+
+def invalidar_cache_rutinas(
+    usuario_id: int,
+) -> None:
+    cache.delete(
+        obtener_clave_cache(usuario_id)
+    )
 
 
 @routines_bp.get("/")
@@ -22,6 +41,37 @@ def obtener_usuario_id() -> int:
 def listar_rutinas():
     usuario_id = obtener_usuario_id()
 
+    clave_cache = obtener_clave_cache(
+        usuario_id
+    )
+
+    inicio = perf_counter()
+
+    # Estrategia cache-aside:
+    # primero se busca en caché.
+    datos_cache = cache.get(clave_cache)
+
+    if datos_cache is not None:
+        tiempo_ms = round(
+            (perf_counter() - inicio) * 1000,
+            3,
+        )
+
+        return jsonify(
+            {
+                **datos_cache,
+                "cache": {
+                    "estado": "HIT",
+                    "ttl_segundos": (
+                        CACHE_TTL_SEGUNDOS
+                    ),
+                },
+                "tiempo_ms": tiempo_ms,
+            }
+        ), 200
+
+    # Si no existe en caché, se consulta
+    # la base de datos.
     resultado = db.session.execute(
         db.select(Routine)
         .where(
@@ -32,13 +82,36 @@ def listar_rutinas():
         )
     ).scalars().all()
 
+    respuesta = {
+        "rutinas": [
+            rutina.to_dict()
+            for rutina in resultado
+        ],
+        "total": len(resultado),
+    }
+
+    # Se guarda la respuesta durante 60 segundos.
+    cache.set(
+        clave_cache,
+        respuesta,
+        timeout=CACHE_TTL_SEGUNDOS,
+    )
+
+    tiempo_ms = round(
+        (perf_counter() - inicio) * 1000,
+        3,
+    )
+
     return jsonify(
         {
-            "rutinas": [
-                rutina.to_dict()
-                for rutina in resultado
-            ],
-            "total": len(resultado),
+            **respuesta,
+            "cache": {
+                "estado": "MISS",
+                "ttl_segundos": (
+                    CACHE_TTL_SEGUNDOS
+                ),
+            },
+            "tiempo_ms": tiempo_ms,
         }
     ), 200
 
@@ -146,6 +219,11 @@ def crear_rutina():
     try:
         db.session.add(nueva_rutina)
         db.session.commit()
+
+        # Al cambiar los datos se elimina
+        # explícitamente la información anterior.
+        invalidar_cache_rutinas(usuario_id)
+
     except Exception:
         db.session.rollback()
 
@@ -164,6 +242,7 @@ def crear_rutina():
                 "Rutina creada correctamente."
             ),
             "rutina": nueva_rutina.to_dict(),
+            "cache_invalidada": True,
         }
     ), 201
 
@@ -203,7 +282,10 @@ def actualizar_rutina(rutina_id):
         ), 404
 
     nombre = str(
-        data.get("nombre", rutina.nombre)
+        data.get(
+            "nombre",
+            rutina.nombre,
+        )
     ).strip()
 
     descripcion = str(
@@ -260,6 +342,9 @@ def actualizar_rutina(rutina_id):
 
     try:
         db.session.commit()
+
+        invalidar_cache_rutinas(usuario_id)
+
     except Exception:
         db.session.rollback()
 
@@ -278,6 +363,7 @@ def actualizar_rutina(rutina_id):
                 "Rutina actualizada correctamente."
             ),
             "rutina": rutina.to_dict(),
+            "cache_invalidada": True,
         }
     ), 200
 
@@ -308,6 +394,9 @@ def eliminar_rutina(rutina_id):
     try:
         db.session.delete(rutina)
         db.session.commit()
+
+        invalidar_cache_rutinas(usuario_id)
+
     except Exception:
         db.session.rollback()
 
@@ -325,5 +414,6 @@ def eliminar_rutina(rutina_id):
             "message": (
                 "Rutina eliminada correctamente."
             ),
+            "cache_invalidada": True,
         }
     ), 200

@@ -534,7 +534,6 @@ class ApiService {
   }
 
 
-
   // =========================
   // PESOS
   // =========================
@@ -820,6 +819,71 @@ class ApiService {
         statusCode: response.statusCode,
       );
     }
+  }
+
+
+  // =========================
+  // OPTIMIZACIÓN SEMANA 8
+  // =========================
+
+  Future<Map<String, dynamic>> runN1Diagnostic() async {
+    final response = await _authenticatedGet(
+      '$baseUrl/optimizacion/diagnostico-n1',
+    );
+
+    final data = _decodeResponse(response);
+
+    if (response.statusCode != 200) {
+      throw ApiException(
+        data['message']?.toString() ??
+            data['msg']?.toString() ??
+            'No se pudo ejecutar el diagnóstico N+1.',
+        statusCode: response.statusCode,
+      );
+    }
+
+    return data;
+  }
+
+  Future<Map<String, dynamic>> createOptimizationTask() async {
+    final response = await _authenticatedRequest(
+      url: '$baseUrl/optimizacion/tareas/resumen',
+      method: 'POST',
+    );
+
+    final data = _decodeResponse(response);
+
+    if (response.statusCode != 202) {
+      throw ApiException(
+        data['message']?.toString() ??
+            data['msg']?.toString() ??
+            'No se pudo enviar la tarea al worker.',
+        statusCode: response.statusCode,
+      );
+    }
+
+    return data;
+  }
+
+  Future<Map<String, dynamic>> getOptimizationTask({
+    required String taskId,
+  }) async {
+    final response = await _authenticatedGet(
+      '$baseUrl/optimizacion/tareas/$taskId',
+    );
+
+    final data = _decodeResponse(response);
+
+    if (response.statusCode != 200) {
+      throw ApiException(
+        data['message']?.toString() ??
+            data['msg']?.toString() ??
+            'No se pudo consultar la tarea.',
+        statusCode: response.statusCode,
+      );
+    }
+
+    return data;
   }
 
   // =========================

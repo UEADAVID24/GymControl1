@@ -3,7 +3,15 @@ import os
 from dotenv import load_dotenv
 from flask import Flask, jsonify
 
-from .extensions import cors, db, jwt, migrate
+from .extensions import (
+    cache,
+    cors,
+    db,
+    jwt,
+    migrate,
+)
+
+from .task_queue import iniciar_worker
 
 
 def create_app() -> Flask:
@@ -16,7 +24,7 @@ def create_app() -> Flask:
         "sqlite:///gymcontrol.db",
     )
 
-    # Compatibilidad con algunas URL antiguas de PostgreSQL.
+    # Compatibilidad con PostgreSQL en Render.
     if database_url.startswith("postgres://"):
         database_url = database_url.replace(
             "postgres://",
@@ -24,9 +32,7 @@ def create_app() -> Flask:
             1,
         )
 
-    app.config["SQLALCHEMY_DATABASE_URI"] = (
-        database_url
-    )
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 
     app.config[
         "SQLALCHEMY_TRACK_MODIFICATIONS"
@@ -37,9 +43,18 @@ def create_app() -> Flask:
         "gymcontrol-clave-secreta-2026",
     )
 
+    # Configuración del caché
+    app.config["CACHE_TYPE"] = os.getenv(
+        "CACHE_TYPE",
+        "SimpleCache",
+    )
+
+    app.config["CACHE_DEFAULT_TIMEOUT"] = 60
+
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
+    cache.init_app(app)
 
     cors.init_app(
         app,
@@ -61,6 +76,9 @@ def create_app() -> Flask:
 
     from .routes.auth import auth_bp
     from .routes.exercises import exercises_bp
+    from .routes.optimization import (
+        optimization_bp,
+    )
     from .routes.reminders import reminders_bp
     from .routes.routines import routines_bp
     from .routes.trainings import trainings_bp
@@ -96,13 +114,19 @@ def create_app() -> Flask:
         url_prefix="/api/v1/recordatorios",
     )
 
+    app.register_blueprint(
+        optimization_bp,
+        url_prefix="/api/v1/optimizacion",
+    )
+
+    # Inicia el worker en segundo plano
+    iniciar_worker(app)
+
     @app.get("/")
     def home():
         return jsonify(
             {
-                "message": (
-                    "API de GymControl funcionando"
-                ),
+                "message": "API de GymControl funcionando",
                 "status": "ok",
             }
         ), 200
@@ -113,6 +137,8 @@ def create_app() -> Flask:
             {
                 "service": "GymControl Backend",
                 "status": "ok",
+                "cache": app.config["CACHE_TYPE"],
+                "worker": "activo",
             }
         ), 200
 

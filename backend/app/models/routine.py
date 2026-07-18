@@ -35,11 +35,15 @@ class Routine(db.Model):
         back_populates="rutinas",
     )
 
+    # Lazy loading por defecto.
+    # Se utilizará eager loading explícitamente
+    # en las consultas donde se requieran ejercicios.
     ejercicios = db.relationship(
         "Exercise",
         back_populates="rutina",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        lazy="select",
     )
 
     entrenamientos = db.relationship(
@@ -48,10 +52,25 @@ class Routine(db.Model):
         passive_deletes=True,
     )
 
-    def to_dict(self):
-        return {
+    def to_dict(
+        self,
+        incluir_ejercicios: bool = False,
+    ):
+        datos = {
             "id": self.id,
             "usuario_id": self.usuario_id,
             "nombre": self.nombre,
             "descripcion": self.descripcion,
         }
+
+        if incluir_ejercicios:
+            datos["ejercicios"] = [
+                ejercicio.to_dict()
+                for ejercicio in self.ejercicios
+            ]
+
+            datos["total_ejercicios"] = len(
+                self.ejercicios
+            )
+
+        return datos
