@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../database/database_helper.dart';
 import '../models/weight_model.dart';
+import '../services/api_service.dart';
 
 class WeightScreen extends StatefulWidget {
   final int usuarioId;
@@ -13,11 +13,13 @@ class WeightScreen extends StatefulWidget {
   });
 
   @override
-  State<WeightScreen> createState() => _WeightScreenState();
+  State<WeightScreen> createState() =>
+      _WeightScreenState();
 }
 
 class _WeightScreenState extends State<WeightScreen> {
   List<WeightModel> registros = [];
+
   bool cargando = true;
 
   @override
@@ -26,11 +28,28 @@ class _WeightScreenState extends State<WeightScreen> {
     cargarPesos();
   }
 
+  // =========================
+  // CARGAR PESOS DESDE RENDER
+  // =========================
+
   Future<void> cargarPesos() async {
     try {
       final resultado =
-          await DatabaseHelper.instance.getWeightsByUser(
-        widget.usuarioId,
+          await ApiService.instance.getWeights();
+
+      resultado.sort(
+        (a, b) {
+          final comparacionFecha =
+              b.fecha.compareTo(a.fecha);
+
+          if (comparacionFecha != 0) {
+            return comparacionFecha;
+          }
+
+          return (b.id ?? 0).compareTo(
+            a.id ?? 0,
+          );
+        },
       );
 
       if (!mounted) return;
@@ -39,6 +58,18 @@ class _WeightScreenState extends State<WeightScreen> {
         registros = resultado;
         cargando = false;
       });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        cargando = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+        ),
+      );
     } catch (error) {
       if (!mounted) return;
 
@@ -49,22 +80,35 @@ class _WeightScreenState extends State<WeightScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'No se pudieron cargar los registros de peso.',
+            'No se pudo conectar con el servidor.',
           ),
         ),
       );
     }
   }
 
-  String fechaParaBaseDeDatos(DateTime fecha) {
-    final year = fecha.year.toString().padLeft(4, '0');
-    final month = fecha.month.toString().padLeft(2, '0');
-    final day = fecha.day.toString().padLeft(2, '0');
+  // =========================
+  // FORMATO DE FECHAS
+  // =========================
+
+  String fechaParaBaseDeDatos(
+    DateTime fecha,
+  ) {
+    final year =
+        fecha.year.toString().padLeft(4, '0');
+
+    final month =
+        fecha.month.toString().padLeft(2, '0');
+
+    final day =
+        fecha.day.toString().padLeft(2, '0');
 
     return '$year-$month-$day';
   }
 
-  String fechaParaMostrar(String fecha) {
+  String fechaParaMostrar(
+    String fecha,
+  ) {
     final partes = fecha.split('-');
 
     if (partes.length != 3) {
@@ -74,38 +118,55 @@ class _WeightScreenState extends State<WeightScreen> {
     return '${partes[2]}/${partes[1]}/${partes[0]}';
   }
 
+  // =========================
+  // CREAR O EDITAR PESO
+  // =========================
+
   Future<void> mostrarFormulario({
     WeightModel? registro,
   }) async {
-    final pesoController = TextEditingController(
-      text: registro?.peso.toStringAsFixed(1) ?? '',
+    final pesoController =
+        TextEditingController(
+      text: registro?.peso.toStringAsFixed(1) ??
+          '',
     );
 
-    DateTime fechaSeleccionada = registro == null
-        ? DateTime.now()
-        : DateTime.tryParse(registro.fecha) ?? DateTime.now();
+    DateTime fechaSeleccionada =
+        registro == null
+            ? DateTime.now()
+            : DateTime.tryParse(
+                  registro.fecha,
+                ) ??
+                DateTime.now();
 
     final esEdicion = registro != null;
 
-    await showDialog<void>(
+    final guardado = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
         bool guardando = false;
 
         return StatefulBuilder(
-          builder: (context, setDialogState) {
-            Future<void> seleccionarFecha() async {
-              final nuevaFecha = await showDatePicker(
+          builder: (
+            context,
+            setDialogState,
+          ) {
+            Future<void> seleccionarFecha()
+                async {
+              final nuevaFecha =
+                  await showDatePicker(
                 context: dialogContext,
-                initialDate: fechaSeleccionada,
+                initialDate:
+                    fechaSeleccionada,
                 firstDate: DateTime(2000),
                 lastDate: DateTime.now(),
               );
 
               if (nuevaFecha != null) {
                 setDialogState(() {
-                  fechaSeleccionada = nuevaFecha;
+                  fechaSeleccionada =
+                      nuevaFecha;
                 });
               }
             }
@@ -118,39 +179,64 @@ class _WeightScreenState extends State<WeightScreen> {
               ),
               content: SingleChildScrollView(
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisSize:
+                      MainAxisSize.min,
                   children: [
                     TextField(
-                      controller: pesoController,
+                      controller:
+                          pesoController,
                       enabled: !guardando,
-                      keyboardType: const TextInputType.numberWithOptions(
+                      keyboardType:
+                          const TextInputType
+                              .numberWithOptions(
                         decimal: true,
                       ),
                       inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'^\d{0,3}([.,]\d{0,2})?$'),
+                        FilteringTextInputFormatter
+                            .allow(
+                          RegExp(
+                            r'^\d{0,3}([.,]\d{0,2})?$',
+                          ),
                         ),
                       ],
-                      decoration: const InputDecoration(
-                        labelText: 'Peso corporal',
-                        hintText: 'Ejemplo: 72.5',
+                      decoration:
+                          const InputDecoration(
+                        labelText:
+                            'Peso corporal',
+                        hintText:
+                            'Ejemplo: 72.5',
                         suffixText: 'kg',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.monitor_weight),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.calendar_month),
-                      title: const Text('Fecha'),
-                      subtitle: Text(
-                        fechaParaMostrar(
-                          fechaParaBaseDeDatos(fechaSeleccionada),
+                        border:
+                            OutlineInputBorder(),
+                        prefixIcon: Icon(
+                          Icons.monitor_weight,
                         ),
                       ),
-                      trailing: const Icon(Icons.edit_calendar),
-                      onTap: guardando ? null : seleccionarFecha,
+                    ),
+                    const SizedBox(
+                      height: 16,
+                    ),
+                    ListTile(
+                      contentPadding:
+                          EdgeInsets.zero,
+                      leading: const Icon(
+                        Icons.calendar_month,
+                      ),
+                      title:
+                          const Text('Fecha'),
+                      subtitle: Text(
+                        fechaParaMostrar(
+                          fechaParaBaseDeDatos(
+                            fechaSeleccionada,
+                          ),
+                        ),
+                      ),
+                      trailing: const Icon(
+                        Icons.edit_calendar,
+                      ),
+                      onTap: guardando
+                          ? null
+                          : seleccionarFecha,
                     ),
                   ],
                 ),
@@ -160,41 +246,47 @@ class _WeightScreenState extends State<WeightScreen> {
                   onPressed: guardando
                       ? null
                       : () {
-                          Navigator.pop(dialogContext);
+                          Navigator.pop(
+                            dialogContext,
+                            false,
+                          );
                         },
-                  child: const Text('Cancelar'),
+                  child: const Text(
+                    'Cancelar',
+                  ),
                 ),
-                ElevatedButton(
+                FilledButton(
                   onPressed: guardando
                       ? null
                       : () async {
-                          final textoPeso = pesoController.text
-                              .trim()
-                              .replaceAll(',', '.');
+                          final textoPeso =
+                              pesoController
+                                  .text
+                                  .trim()
+                                  .replaceAll(
+                                    ',',
+                                    '.',
+                                  );
 
-                          final peso = double.tryParse(textoPeso);
+                          final peso =
+                              double.tryParse(
+                            textoPeso,
+                          );
 
-                          if (peso == null) {
-                            ScaffoldMessenger.of(this.context)
-                                .showSnackBar(
+                          if (peso == null ||
+                              peso <= 0 ||
+                              peso > 500) {
+                            ScaffoldMessenger
+                                    .of(
+                              dialogContext,
+                            ).showSnackBar(
                               const SnackBar(
                                 content: Text(
-                                  'Ingrese un peso válido.',
+                                  'Ingrese un peso válido entre 1 y 500 kg.',
                                 ),
                               ),
                             );
-                            return;
-                          }
 
-                          if (peso < 20 || peso > 400) {
-                            ScaffoldMessenger.of(this.context)
-                                .showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Ingrese un peso entre 20 y 400 kg.',
-                                ),
-                              ),
-                            );
                             return;
                           }
 
@@ -203,70 +295,82 @@ class _WeightScreenState extends State<WeightScreen> {
                           });
 
                           try {
-                            final fecha = fechaParaBaseDeDatos(
+                            final fecha =
+                                fechaParaBaseDeDatos(
                               fechaSeleccionada,
                             );
 
                             if (esEdicion) {
-                              final registroActualizado =
-                                  registro.copyWith(
+                              if (registro.id ==
+                                  null) {
+                                throw const ApiException(
+                                  'El registro no tiene identificador.',
+                                );
+                              }
+
+                              await ApiService
+                                  .instance
+                                  .updateWeight(
+                                pesoId:
+                                    registro.id!,
                                 peso: peso,
                                 fecha: fecha,
-                              );
-
-                              await DatabaseHelper.instance
-                                  .updateWeight(
-                                registroActualizado,
                               );
                             } else {
-                              final nuevoRegistro = WeightModel(
-                                usuarioId: widget.usuarioId,
+                              await ApiService
+                                  .instance
+                                  .createWeight(
                                 peso: peso,
                                 fecha: fecha,
-                              );
-
-                              await DatabaseHelper.instance
-                                  .insertWeight(
-                                nuevoRegistro,
                               );
                             }
 
-                            if (!mounted) return;
+                            if (!dialogContext
+                                .mounted) {
+                              return;
+                            }
 
-                            Navigator.pop(dialogContext);
-
-                            await Future<void>.delayed(
-                              const Duration(milliseconds: 250),
+                            Navigator.pop(
+                              dialogContext,
+                              true,
                             );
-
-                            if (!mounted) return;
-
-                            await cargarPesos();
-
-                            if (!mounted) return;
-
-                            ScaffoldMessenger.of(this.context)
-                                .showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  esEdicion
-                                      ? 'Peso actualizado correctamente.'
-                                      : 'Peso registrado correctamente.',
-                                ),
-                              ),
-                            );
-                          } catch (error) {
-                            if (!mounted) return;
-
+                          } on ApiException catch (
+                            error
+                          ) {
                             setDialogState(() {
                               guardando = false;
                             });
 
-                            ScaffoldMessenger.of(this.context)
-                                .showSnackBar(
-                              const SnackBar(
+                            if (!dialogContext
+                                .mounted) {
+                              return;
+                            }
+
+                            ScaffoldMessenger.of(
+                              dialogContext,
+                            ).showSnackBar(
+                              SnackBar(
                                 content: Text(
-                                  'No se pudo guardar el peso.',
+                                  error.message,
+                                ),
+                              ),
+                            );
+                          } catch (error) {
+                            setDialogState(() {
+                              guardando = false;
+                            });
+
+                            if (!dialogContext
+                                .mounted) {
+                              return;
+                            }
+
+                            ScaffoldMessenger.of(
+                              dialogContext,
+                            ).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'No se pudo conectar con el servidor: $error',
                                 ),
                               ),
                             );
@@ -276,12 +380,15 @@ class _WeightScreenState extends State<WeightScreen> {
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(
+                          child:
+                              CircularProgressIndicator(
                             strokeWidth: 2,
                           ),
                         )
                       : Text(
-                          esEdicion ? 'Actualizar' : 'Guardar',
+                          esEdicion
+                              ? 'Actualizar'
+                              : 'Guardar',
                         ),
                 ),
               ],
@@ -291,21 +398,58 @@ class _WeightScreenState extends State<WeightScreen> {
       },
     );
 
-    await Future<void>.delayed(
-      const Duration(milliseconds: 300),
-    );
-
     pesoController.dispose();
+
+    if (guardado != true) {
+      return;
+    }
+
+    setState(() {
+      cargando = true;
+    });
+
+    await cargarPesos();
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          esEdicion
+              ? 'Peso actualizado correctamente.'
+              : 'Peso registrado correctamente.',
+        ),
+      ),
+    );
   }
+
+  // =========================
+  // ELIMINAR PESO
+  // =========================
 
   Future<void> confirmarEliminacion(
     WeightModel registro,
   ) async {
-    final confirmar = await showDialog<bool>(
+    if (registro.id == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'El registro no tiene identificador.',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    final confirmar =
+        await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Eliminar registro'),
+          title: const Text(
+            'Eliminar registro',
+          ),
           content: Text(
             '¿Deseas eliminar el registro de '
             '${registro.peso.toStringAsFixed(1)} kg?',
@@ -313,30 +457,43 @@ class _WeightScreenState extends State<WeightScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(dialogContext, false);
+                Navigator.pop(
+                  dialogContext,
+                  false,
+                );
               },
-              child: const Text('Cancelar'),
+              child: const Text(
+                'Cancelar',
+              ),
             ),
-            ElevatedButton(
+            FilledButton(
               onPressed: () {
-                Navigator.pop(dialogContext, true);
+                Navigator.pop(
+                  dialogContext,
+                  true,
+                );
               },
-              child: const Text('Eliminar'),
+              child: const Text(
+                'Eliminar',
+              ),
             ),
           ],
         );
       },
     );
 
-    if (confirmar != true || registro.id == null) {
+    if (confirmar != true) {
       return;
     }
 
     try {
-      await DatabaseHelper.instance.deleteWeight(
-        registro.id!,
-        widget.usuarioId,
+      await ApiService.instance.deleteWeight(
+        pesoId: registro.id!,
       );
+
+      setState(() {
+        cargando = true;
+      });
 
       await cargarPesos();
 
@@ -344,7 +501,17 @@ class _WeightScreenState extends State<WeightScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Registro eliminado correctamente.'),
+          content: Text(
+            'Registro eliminado correctamente.',
+          ),
+        ),
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
         ),
       );
     } catch (error) {
@@ -352,100 +519,191 @@ class _WeightScreenState extends State<WeightScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No se pudo eliminar el registro.'),
+          content: Text(
+            'No se pudo conectar con el servidor.',
+          ),
         ),
       );
     }
   }
 
+  Future<void> actualizarPantalla() async {
+    setState(() {
+      cargando = true;
+    });
+
+    await cargarPesos();
+  }
+
+  // =========================
+  // INTERFAZ
+  // =========================
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mi peso'),
+        title: const Text(
+          'Mi peso',
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Actualizar',
+            onPressed:
+                cargando ? null : actualizarPantalla,
+            icon: const Icon(
+              Icons.refresh,
+            ),
+          ),
+        ],
       ),
       body: cargando
           ? const Center(
-              child: CircularProgressIndicator(),
+              child:
+                  CircularProgressIndicator(),
             )
           : registros.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.monitor_weight_outlined,
-                          size: 80,
-                          color: Colors.deepPurple,
+              ? RefreshIndicator(
+                  onRefresh: cargarPesos,
+                  child: ListView(
+                    physics:
+                        const AlwaysScrollableScrollPhysics(),
+                    children: const [
+                      SizedBox(height: 140),
+                      Padding(
+                        padding:
+                            EdgeInsets.all(24),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons
+                                  .monitor_weight_outlined,
+                              size: 80,
+                              color:
+                                  Colors.deepPurple,
+                            ),
+                            SizedBox(height: 20),
+                            Text(
+                              'Todavía no tienes registros de peso.',
+                              textAlign:
+                                  TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 17,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Presiona Registrar peso para guardar tu primer registro.',
+                              textAlign:
+                                  TextAlign.center,
+                            ),
+                          ],
                         ),
-                        SizedBox(height: 20),
-                        Text(
-                          'Todavía no tienes registros de peso.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 17),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 )
               : RefreshIndicator(
                   onRefresh: cargarPesos,
                   child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: registros.length,
-                    itemBuilder: (context, index) {
-                      final registro = registros[index];
+                    physics:
+                        const AlwaysScrollableScrollPhysics(),
+                    padding:
+                        const EdgeInsets.all(
+                      16,
+                    ),
+                    itemCount:
+                        registros.length,
+                    itemBuilder: (
+                      context,
+                      index,
+                    ) {
+                      final registro =
+                          registros[index];
 
                       return Card(
-                        margin: const EdgeInsets.only(bottom: 12),
+                        margin:
+                            const EdgeInsets.only(
+                          bottom: 12,
+                        ),
                         child: ListTile(
-                          leading: const CircleAvatar(
-                            child: Icon(Icons.monitor_weight),
+                          leading:
+                              const CircleAvatar(
+                            child: Icon(
+                              Icons.monitor_weight,
+                            ),
                           ),
                           title: Text(
                             '${registro.peso.toStringAsFixed(1)} kg',
-                            style: const TextStyle(
+                            style:
+                                const TextStyle(
                               fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                              fontWeight:
+                                  FontWeight.bold,
                             ),
                           ),
                           subtitle: Text(
-                            fechaParaMostrar(registro.fecha),
+                            fechaParaMostrar(
+                              registro.fecha,
+                            ),
                           ),
                           onTap: () {
-                            mostrarFormulario(registro: registro);
+                            mostrarFormulario(
+                              registro: registro,
+                            );
                           },
-                          trailing: PopupMenuButton<String>(
-                            onSelected: (opcion) {
-                              if (opcion == 'editar') {
+                          trailing:
+                              PopupMenuButton<
+                                  String>(
+                            onSelected:
+                                (opcion) {
+                              if (opcion ==
+                                  'editar') {
                                 mostrarFormulario(
-                                  registro: registro,
+                                  registro:
+                                      registro,
                                 );
-                              } else if (opcion == 'eliminar') {
-                                confirmarEliminacion(registro);
+                              } else if (opcion ==
+                                  'eliminar') {
+                                confirmarEliminacion(
+                                  registro,
+                                );
                               }
                             },
-                            itemBuilder: (context) {
+                            itemBuilder:
+                                (context) {
                               return const [
                                 PopupMenuItem(
-                                  value: 'editar',
+                                  value:
+                                      'editar',
                                   child: Row(
                                     children: [
-                                      Icon(Icons.edit),
-                                      SizedBox(width: 10),
-                                      Text('Editar'),
+                                      Icon(
+                                        Icons.edit,
+                                      ),
+                                      SizedBox(
+                                        width: 10,
+                                      ),
+                                      Text(
+                                        'Editar',
+                                      ),
                                     ],
                                   ),
                                 ),
                                 PopupMenuItem(
-                                  value: 'eliminar',
+                                  value:
+                                      'eliminar',
                                   child: Row(
                                     children: [
-                                      Icon(Icons.delete),
-                                      SizedBox(width: 10),
-                                      Text('Eliminar'),
+                                      Icon(
+                                        Icons.delete,
+                                      ),
+                                      SizedBox(
+                                        width: 10,
+                                      ),
+                                      Text(
+                                        'Eliminar',
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -457,12 +715,17 @@ class _WeightScreenState extends State<WeightScreen> {
                     },
                   ),
                 ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton:
+          FloatingActionButton.extended(
         onPressed: () {
           mostrarFormulario();
         },
-        icon: const Icon(Icons.add),
-        label: const Text('Registrar peso'),
+        icon: const Icon(
+          Icons.add,
+        ),
+        label: const Text(
+          'Registrar peso',
+        ),
       ),
     );
   }

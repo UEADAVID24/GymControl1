@@ -5,10 +5,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite/sqflite.dart';
 
-import '../database/database_helper.dart';
 import '../models/user_model.dart';
+import '../services/api_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   final int usuarioId;
@@ -27,6 +26,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   UserModel? usuario;
   File? fotoPerfil;
+
   bool cargando = true;
 
   @override
@@ -45,6 +45,156 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String get _claveFotoPerfil =>
       'foto_perfil_usuario_${widget.usuarioId}';
 
+  // =========================
+  // CARGAR PERFIL DESDE API
+  // =========================
+
+  Future<void> cargarUsuario() async {
+    try {
+      final respuesta =
+          await ApiService.instance.getProfile();
+
+      final dynamic datosUsuario =
+          respuesta['usuario'] ?? respuesta;
+
+      if (datosUsuario is! Map) {
+        throw const ApiException(
+          'El servidor no devolvió la información del usuario.',
+        );
+      }
+
+      final mapa = Map<String, dynamic>.from(
+        datosUsuario,
+      );
+
+      final dynamic idValor =
+          mapa['id'] ?? mapa['usuario_id'];
+
+      int usuarioId = widget.usuarioId;
+
+      if (idValor is int) {
+        usuarioId = idValor;
+      } else {
+        usuarioId = int.tryParse(
+              idValor?.toString() ?? '',
+            ) ??
+            widget.usuarioId;
+      }
+
+      final nombre =
+          mapa['nombre']?.toString().trim() ?? '';
+
+      final correo =
+          mapa['correo']?.toString().trim() ?? '';
+
+      if (nombre.isEmpty || correo.isEmpty) {
+        throw const ApiException(
+          'La información del usuario está incompleta.',
+        );
+      }
+
+      final preferences =
+          await SharedPreferences.getInstance();
+
+      await preferences.setInt(
+        'usuario_id',
+        usuarioId,
+      );
+
+      await preferences.setString(
+        'usuario_nombre',
+        nombre,
+      );
+
+      await preferences.setString(
+        'usuario_correo',
+        correo,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        usuario = UserModel(
+          id: usuarioId,
+          nombre: nombre,
+          correo: correo,
+          password: '',
+        );
+
+        cargando = false;
+      });
+    } on ApiException catch (error) {
+      await cargarUsuarioGuardado(
+        mensajeError: error.message,
+      );
+    } catch (error) {
+      await cargarUsuarioGuardado(
+        mensajeError:
+            'No se pudo cargar el perfil desde el servidor.',
+      );
+    }
+  }
+
+  Future<void> cargarUsuarioGuardado({
+    required String mensajeError,
+  }) async {
+    final preferences =
+        await SharedPreferences.getInstance();
+
+    final usuarioId =
+        preferences.getInt('usuario_id') ??
+            widget.usuarioId;
+
+    final nombre =
+        preferences.getString('usuario_nombre');
+
+    final correo =
+        preferences.getString('usuario_correo');
+
+    if (!mounted) return;
+
+    if (nombre != null &&
+        nombre.trim().isNotEmpty &&
+        correo != null &&
+        correo.trim().isNotEmpty) {
+      setState(() {
+        usuario = UserModel(
+          id: usuarioId,
+          nombre: nombre,
+          correo: correo,
+          password: '',
+        );
+
+        cargando = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '$mensajeError Se mostraron los datos guardados.',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    setState(() {
+      usuario = null;
+      cargando = false;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(mensajeError),
+      ),
+    );
+  }
+
+  // =========================
+  // FOTO DE PERFIL LOCAL
+  // =========================
+
   Future<void> cargarFotoPerfil() async {
     final preferences =
         await SharedPreferences.getInstance();
@@ -60,7 +210,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final archivo = File(rutaGuardada);
 
     if (!await archivo.exists()) {
-      await preferences.remove(_claveFotoPerfil);
+      await preferences.remove(
+        _claveFotoPerfil,
+      );
+
       return;
     }
 
@@ -75,7 +228,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ImageSource origen,
   ) async {
     try {
-      final imagen = await _imagePicker.pickImage(
+      final imagen =
+          await _imagePicker.pickImage(
         source: origen,
         maxWidth: 1200,
         maxHeight: 1200,
@@ -168,7 +322,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final preferences =
           await SharedPreferences.getInstance();
 
-      await preferences.remove(_claveFotoPerfil);
+      await preferences.remove(
+        _claveFotoPerfil,
+      );
 
       if (!mounted) return;
 
@@ -183,7 +339,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
       );
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -226,6 +382,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   onTap: () {
                     Navigator.pop(sheetContext);
+
                     seleccionarFoto(
                       ImageSource.gallery,
                     );
@@ -240,6 +397,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   onTap: () {
                     Navigator.pop(sheetContext);
+
                     seleccionarFoto(
                       ImageSource.camera,
                     );
@@ -255,6 +413,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     onTap: () {
                       Navigator.pop(sheetContext);
+
                       eliminarFotoPerfil();
                     },
                   ),
@@ -266,656 +425,348 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Future<void> cargarUsuario() async {
-    try {
-      final resultado =
-          await DatabaseHelper.instance.getUserById(widget.usuarioId);
+  // =========================
+  // OPCIONES DEL PERFIL
+  // =========================
 
-      if (!mounted) return;
-
-      setState(() {
-        usuario = resultado;
-        cargando = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-
-      setState(() {
-        cargando = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No se pudo cargar el perfil.'),
+  void mostrarFuncionPendiente(
+    String funcion,
+  ) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '$funcion estará disponible cuando se conecte esta opción con el servidor.',
         ),
-      );
-    }
+      ),
+    );
   }
 
-  Future<void> editarDatos() async {
-    if (usuario == null) return;
-
-    final nombreController = TextEditingController(
-      text: usuario!.nombre,
-    );
-
-    final correoController = TextEditingController(
-      text: usuario!.correo,
-    );
-
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        bool guardando = false;
-
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Editar perfil'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: nombreController,
-                      enabled: !guardando,
-                      decoration: const InputDecoration(
-                        labelText: 'Nombre',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.person),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: correoController,
-                      enabled: !guardando,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: 'Correo electrónico',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.email),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: guardando
-                      ? null
-                      : () {
-                          Navigator.pop(dialogContext);
-                        },
-                  child: const Text('Cancelar'),
-                ),
-                ElevatedButton(
-                  onPressed: guardando
-                      ? null
-                      : () async {
-                          final nombre =
-                              nombreController.text.trim();
-                          final correo =
-                              correoController.text.trim();
-
-                          if (nombre.isEmpty || correo.isEmpty) {
-                            ScaffoldMessenger.of(this.context)
-                                .showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Complete el nombre y el correo.',
-                                ),
-                              ),
-                            );
-                            return;
-                          }
-
-                          if (!correo.contains('@')) {
-                            ScaffoldMessenger.of(this.context)
-                                .showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Ingrese un correo válido.',
-                                ),
-                              ),
-                            );
-                            return;
-                          }
-
-                          setDialogState(() {
-                            guardando = true;
-                          });
-
-                          try {
-                            final usuarioActualizado = UserModel(
-                              id: usuario!.id,
-                              nombre: nombre,
-                              correo: correo,
-                              password: usuario!.password,
-                            );
-
-                            await DatabaseHelper.instance.updateUser(
-                              usuarioActualizado,
-                            );
-
-                            if (!mounted) return;
-
-                            Navigator.pop(dialogContext);
-
-                            await Future<void>.delayed(
-                              const Duration(milliseconds: 250),
-                            );
-
-                            await cargarUsuario();
-
-                            if (!mounted) return;
-
-                            ScaffoldMessenger.of(this.context)
-                                .showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Perfil actualizado correctamente.',
-                                ),
-                              ),
-                            );
-                          } on DatabaseException catch (error) {
-                            if (!mounted) return;
-
-                            setDialogState(() {
-                              guardando = false;
-                            });
-
-                            final mensaje =
-                                error.isUniqueConstraintError()
-                                    ? 'Ese correo ya está registrado.'
-                                    : 'No se pudo actualizar el perfil.';
-
-                            ScaffoldMessenger.of(this.context)
-                                .showSnackBar(
-                              SnackBar(
-                                content: Text(mensaje),
-                              ),
-                            );
-                          } catch (error) {
-                            if (!mounted) return;
-
-                            setDialogState(() {
-                              guardando = false;
-                            });
-
-                            ScaffoldMessenger.of(this.context)
-                                .showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'No se pudo actualizar el perfil.',
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                  child: guardando
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Text('Guardar'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    await Future<void>.delayed(
-      const Duration(milliseconds: 300),
-    );
-
-    nombreController.dispose();
-    correoController.dispose();
-  }
-
-  Future<void> cambiarPassword() async {
-    if (usuario == null) return;
-
-    final actualController = TextEditingController();
-    final nuevaController = TextEditingController();
-    final confirmarController = TextEditingController();
-
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        bool guardando = false;
-        bool ocultarActual = true;
-        bool ocultarNueva = true;
-        bool ocultarConfirmacion = true;
-
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Cambiar contraseña'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: actualController,
-                      enabled: !guardando,
-                      obscureText: ocultarActual,
-                      decoration: InputDecoration(
-                        labelText: 'Contraseña actual',
-                        border: const OutlineInputBorder(),
-                        prefixIcon: const Icon(Icons.lock),
-                        suffixIcon: IconButton(
-                          onPressed: () {
-                            setDialogState(() {
-                              ocultarActual = !ocultarActual;
-                            });
-                          },
-                          icon: Icon(
-                            ocultarActual
-                                ? Icons.visibility
-                                : Icons.visibility_off,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: nuevaController,
-                      enabled: !guardando,
-                      obscureText: ocultarNueva,
-                      decoration: InputDecoration(
-                        labelText: 'Nueva contraseña',
-                        border: const OutlineInputBorder(),
-                        prefixIcon: const Icon(Icons.lock_reset),
-                        suffixIcon: IconButton(
-                          onPressed: () {
-                            setDialogState(() {
-                              ocultarNueva = !ocultarNueva;
-                            });
-                          },
-                          icon: Icon(
-                            ocultarNueva
-                                ? Icons.visibility
-                                : Icons.visibility_off,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: confirmarController,
-                      enabled: !guardando,
-                      obscureText: ocultarConfirmacion,
-                      decoration: InputDecoration(
-                        labelText: 'Confirmar nueva contraseña',
-                        border: const OutlineInputBorder(),
-                        prefixIcon: const Icon(Icons.verified_user),
-                        suffixIcon: IconButton(
-                          onPressed: () {
-                            setDialogState(() {
-                              ocultarConfirmacion =
-                                  !ocultarConfirmacion;
-                            });
-                          },
-                          icon: Icon(
-                            ocultarConfirmacion
-                                ? Icons.visibility
-                                : Icons.visibility_off,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: guardando
-                      ? null
-                      : () {
-                          Navigator.pop(dialogContext);
-                        },
-                  child: const Text('Cancelar'),
-                ),
-                ElevatedButton(
-                  onPressed: guardando
-                      ? null
-                      : () async {
-                          final actual = actualController.text;
-                          final nueva = nuevaController.text;
-                          final confirmacion =
-                              confirmarController.text;
-
-                          if (actual.isEmpty ||
-                              nueva.isEmpty ||
-                              confirmacion.isEmpty) {
-                            ScaffoldMessenger.of(this.context)
-                                .showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Complete todos los campos.',
-                                ),
-                              ),
-                            );
-                            return;
-                          }
-
-                          if (actual != usuario!.password) {
-                            ScaffoldMessenger.of(this.context)
-                                .showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'La contraseña actual es incorrecta.',
-                                ),
-                              ),
-                            );
-                            return;
-                          }
-
-                          if (nueva.length < 6) {
-                            ScaffoldMessenger.of(this.context)
-                                .showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'La nueva contraseña debe tener mínimo 6 caracteres.',
-                                ),
-                              ),
-                            );
-                            return;
-                          }
-
-                          if (nueva != confirmacion) {
-                            ScaffoldMessenger.of(this.context)
-                                .showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Las contraseñas no coinciden.',
-                                ),
-                              ),
-                            );
-                            return;
-                          }
-
-                          setDialogState(() {
-                            guardando = true;
-                          });
-
-                          try {
-                            await DatabaseHelper.instance
-                                .updateUserPassword(
-                              widget.usuarioId,
-                              nueva,
-                            );
-
-                            if (!mounted) return;
-
-                            Navigator.pop(dialogContext);
-
-                            await Future<void>.delayed(
-                              const Duration(milliseconds: 250),
-                            );
-
-                            await cargarUsuario();
-
-                            if (!mounted) return;
-
-                            ScaffoldMessenger.of(this.context)
-                                .showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Contraseña actualizada correctamente.',
-                                ),
-                              ),
-                            );
-                          } catch (error) {
-                            if (!mounted) return;
-
-                            setDialogState(() {
-                              guardando = false;
-                            });
-
-                            ScaffoldMessenger.of(this.context)
-                                .showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'No se pudo cambiar la contraseña.',
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                  child: guardando
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Text('Actualizar'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    await Future<void>.delayed(
-      const Duration(milliseconds: 300),
-    );
-
-    actualController.dispose();
-    nuevaController.dispose();
-    confirmarController.dispose();
-  }
-
-  Future<void> eliminarCuenta() async {
+  Future<void> cerrarSesion() async {
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Eliminar cuenta'),
+          title: const Text(
+            'Cerrar sesión',
+          ),
           content: const Text(
-            'Esta acción eliminará tu cuenta, tus rutinas y tus registros de peso. No se puede deshacer.',
+            '¿Deseas cerrar tu sesión en GymControl?',
           ),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(dialogContext, false);
+                Navigator.pop(
+                  dialogContext,
+                  false,
+                );
               },
-              child: const Text('Cancelar'),
+              child: const Text(
+                'Cancelar',
+              ),
             ),
             ElevatedButton(
               onPressed: () {
-                Navigator.pop(dialogContext, true);
+                Navigator.pop(
+                  dialogContext,
+                  true,
+                );
               },
-              child: const Text('Eliminar cuenta'),
+              child: const Text(
+                'Cerrar sesión',
+              ),
             ),
           ],
         );
       },
     );
 
-    if (confirmar != true) return;
-
-    try {
-      await DatabaseHelper.instance.deleteUser(
-        widget.usuarioId,
-      );
-
-      if (!mounted) return;
-
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        '/',
-        (route) => false,
-      );
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cuenta eliminada correctamente.'),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No se pudo eliminar la cuenta.'),
-        ),
-      );
+    if (confirmar != true) {
+      return;
     }
+
+    await ApiService.instance.logout();
+
+    if (!mounted) return;
+
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      '/',
+      (route) => false,
+    );
   }
+
+  Future<void> actualizarPerfil() async {
+    setState(() {
+      cargando = true;
+    });
+
+    await cargarUsuario();
+  }
+
+  // =========================
+  // INTERFAZ
+  // =========================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mi perfil'),
+        title: const Text(
+          'Mi perfil',
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Actualizar perfil',
+            onPressed:
+                cargando ? null : actualizarPerfil,
+            icon: const Icon(
+              Icons.refresh,
+            ),
+          ),
+        ],
       ),
       body: cargando
           ? const Center(
               child: CircularProgressIndicator(),
             )
           : usuario == null
-              ? const Center(
-                  child: Text(
-                    'No se encontró la información del usuario.',
+              ? _buildUsuarioNoEncontrado()
+              : _buildPerfil(),
+    );
+  }
+
+  Widget _buildUsuarioNoEncontrado() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment:
+              MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.person_off_outlined,
+              size: 80,
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'No se encontró la información del usuario.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 18),
+            ElevatedButton.icon(
+              onPressed: actualizarPerfil,
+              icon: const Icon(
+                Icons.refresh,
+              ),
+              label: const Text(
+                'Intentar nuevamente',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPerfil() {
+    return RefreshIndicator(
+      onRefresh: cargarUsuario,
+      child: ListView(
+        physics:
+            const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(20),
+        children: [
+          const SizedBox(height: 10),
+
+          Center(
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                InkWell(
+                  onTap: mostrarOpcionesFoto,
+                  borderRadius:
+                      BorderRadius.circular(60),
+                  child: CircleAvatar(
+                    radius: 55,
+                    backgroundImage:
+                        fotoPerfil != null
+                            ? FileImage(
+                                fotoPerfil!,
+                              )
+                            : null,
+                    child: fotoPerfil == null
+                        ? const Icon(
+                            Icons.person,
+                            size: 70,
+                          )
+                        : null,
                   ),
-                )
-              : ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    const SizedBox(height: 10),
-                    Center(
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          InkWell(
-                            onTap: mostrarOpcionesFoto,
-                            borderRadius:
-                                BorderRadius.circular(60),
-                            child: CircleAvatar(
-                              radius: 55,
-                              backgroundImage:
-                                  fotoPerfil != null
-                                      ? FileImage(
-                                          fotoPerfil!,
-                                        )
-                                      : null,
-                              child: fotoPerfil == null
-                                  ? const Icon(
-                                      Icons.person,
-                                      size: 70,
-                                    )
-                                  : null,
-                            ),
-                          ),
-                          Positioned(
-                            right: -2,
-                            bottom: -2,
-                            child: Material(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .primary,
-                              shape: const CircleBorder(),
-                              child: InkWell(
-                                onTap:
-                                    mostrarOpcionesFoto,
-                                customBorder:
-                                    const CircleBorder(),
-                                child: Padding(
-                                  padding:
-                                      const EdgeInsets.all(
-                                    10,
-                                  ),
-                                  child: Icon(
-                                    Icons.camera_alt,
-                                    size: 20,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onPrimary,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Text(
-                      usuario!.nombre,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      usuario!.correo,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                    const SizedBox(height: 30),
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.edit),
-                        title: const Text('Editar datos'),
-                        subtitle: const Text(
-                          'Cambiar nombre o correo',
-                        ),
-                        trailing: const Icon(
-                          Icons.chevron_right,
-                        ),
-                        onTap: editarDatos,
-                      ),
-                    ),
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.lock_reset),
-                        title: const Text('Cambiar contraseña'),
-                        subtitle: const Text(
-                          'Actualizar la contraseña de acceso',
-                        ),
-                        trailing: const Icon(
-                          Icons.chevron_right,
-                        ),
-                        onTap: cambiarPassword,
-                      ),
-                    ),
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.logout),
-                        title: const Text('Cerrar sesión'),
-                        trailing: const Icon(
-                          Icons.chevron_right,
-                        ),
-                        onTap: () {
-                          Navigator.pushNamedAndRemoveUntil(
-                            context,
-                            '/',
-                            (route) => false,
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    OutlinedButton.icon(
-                      onPressed: eliminarCuenta,
-                      icon: const Icon(Icons.delete_forever),
-                      label: const Text('Eliminar mi cuenta'),
-                    ),
-                  ],
                 ),
+                Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: Material(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary,
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      onTap: mostrarOpcionesFoto,
+                      customBorder:
+                          const CircleBorder(),
+                      child: Padding(
+                        padding:
+                            const EdgeInsets.all(
+                          10,
+                        ),
+                        child: Icon(
+                          Icons.camera_alt,
+                          size: 20,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          Text(
+            usuario!.nombre,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+
+          const SizedBox(height: 6),
+
+          Text(
+            usuario!.correo,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 16,
+            ),
+          ),
+
+          const SizedBox(height: 30),
+
+          Card(
+            child: ListTile(
+              leading: const Icon(
+                Icons.person_outline,
+              ),
+              title: const Text(
+                'Nombre',
+              ),
+              subtitle: Text(
+                usuario!.nombre,
+              ),
+            ),
+          ),
+
+          Card(
+            child: ListTile(
+              leading: const Icon(
+                Icons.email_outlined,
+              ),
+              title: const Text(
+                'Correo electrónico',
+              ),
+              subtitle: Text(
+                usuario!.correo,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          Card(
+            child: ListTile(
+              leading: const Icon(
+                Icons.edit,
+              ),
+              title: const Text(
+                'Editar datos',
+              ),
+              subtitle: const Text(
+                'Cambiar nombre o correo',
+              ),
+              trailing: const Icon(
+                Icons.chevron_right,
+              ),
+              onTap: () {
+                mostrarFuncionPendiente(
+                  'La edición del perfil',
+                );
+              },
+            ),
+          ),
+
+          Card(
+            child: ListTile(
+              leading: const Icon(
+                Icons.lock_reset,
+              ),
+              title: const Text(
+                'Cambiar contraseña',
+              ),
+              subtitle: const Text(
+                'Actualizar la contraseña de acceso',
+              ),
+              trailing: const Icon(
+                Icons.chevron_right,
+              ),
+              onTap: () {
+                mostrarFuncionPendiente(
+                  'El cambio de contraseña',
+                );
+              },
+            ),
+          ),
+
+          Card(
+            child: ListTile(
+              leading: const Icon(
+                Icons.logout,
+              ),
+              title: const Text(
+                'Cerrar sesión',
+              ),
+              trailing: const Icon(
+                Icons.chevron_right,
+              ),
+              onTap: cerrarSesion,
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          OutlinedButton.icon(
+            onPressed: () {
+              mostrarFuncionPendiente(
+                'La eliminación de la cuenta',
+              );
+            },
+            icon: const Icon(
+              Icons.delete_forever,
+            ),
+            label: const Text(
+              'Eliminar mi cuenta',
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
