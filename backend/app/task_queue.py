@@ -2,6 +2,7 @@ import queue
 import threading
 import time
 import uuid
+import traceback
 from datetime import datetime, timezone
 
 from sqlalchemy import func
@@ -61,6 +62,7 @@ def obtener_tarea(task_id: str):
 def generar_resumen_usuario(
     usuario_id: int,
 ):
+    # Simula un procesamiento pesado
     time.sleep(2)
 
     total_rutinas = db.session.scalar(
@@ -108,76 +110,97 @@ def generar_resumen_usuario(
         "usuario_id": usuario_id,
         "total_rutinas": total_rutinas,
         "total_ejercicios": total_ejercicios,
-        "total_entrenamientos": (
-            total_entrenamientos
-        ),
+        "total_entrenamientos": total_entrenamientos,
         "peso_actual": peso_actual,
     }
 
 
 def ejecutar_worker(app):
+    print("===== WORKER INICIADO =====")
+
     while True:
-        tarea = task_queue.get()
-        task_id = tarea["id"]
-
-        task_results[task_id][
-            "estado"
-        ] = "procesando"
-
-        task_results[task_id][
-            "iniciada_en"
-        ] = fecha_actual_utc()
+        tarea = None
+        task_id = None
 
         try:
+            tarea = task_queue.get()
+
+            task_id = tarea["id"]
+
+            print(f"Procesando tarea {task_id}")
+
+            task_results[task_id][
+                "estado"
+            ] = "procesando"
+
+            task_results[task_id][
+                "iniciada_en"
+            ] = fecha_actual_utc()
+
             with app.app_context():
-                if tarea["tipo"] == (
-                    "resumen_usuario"
-                ):
-                    resultado = (
-                        generar_resumen_usuario(
-                            int(
-                                tarea["datos"][
-                                    "usuario_id"
-                                ]
-                            )
+
+                if tarea["tipo"] == "resumen_usuario":
+
+                    resultado = generar_resumen_usuario(
+                        int(
+                            tarea["datos"][
+                                "usuario_id"
+                            ]
                         )
                     )
+
                 else:
                     raise ValueError(
                         "Tipo de tarea no soportado."
                     )
 
-                task_results[task_id][
-                    "resultado"
-                ] = resultado
+            task_results[task_id][
+                "resultado"
+            ] = resultado
+
+            task_results[task_id][
+                "estado"
+            ] = "completada"
+
+            print(
+                f"Tarea {task_id} completada."
+            )
+
+        except Exception as error:
+
+            traceback.print_exc()
+
+            if task_id is not None:
 
                 task_results[task_id][
                     "estado"
-                ] = "completada"
+                ] = "fallida"
 
-        except Exception as error:
-            task_results[task_id][
-                "estado"
-            ] = "fallida"
-
-            task_results[task_id][
-                "error"
-            ] = str(error)
+                task_results[task_id][
+                    "error"
+                ] = str(error)
 
         finally:
-            task_results[task_id][
-                "finalizada_en"
-            ] = fecha_actual_utc()
 
-            task_queue.task_done()
+            if task_id is not None:
+
+                task_results[task_id][
+                    "finalizada_en"
+                ] = fecha_actual_utc()
+
+            if tarea is not None:
+                task_queue.task_done()
 
 
 def iniciar_worker(app) -> None:
     global worker_started
 
     with worker_lock:
+
         if worker_started:
             return
+
+        print("Iniciando worker...")
 
         worker = threading.Thread(
             target=ejecutar_worker,
@@ -187,4 +210,7 @@ def iniciar_worker(app) -> None:
         )
 
         worker.start()
+
         worker_started = True
+
+        print("Worker iniciado correctamente.")

@@ -151,6 +151,111 @@ class ApiService {
     return data;
   }
 
+
+  Future<Map<String, dynamic>> updateProfile({
+    required String nombre,
+    required String correo,
+  }) async {
+    final response = await _authenticatedRequest(
+      url: '$baseUrl/auth/me',
+      method: 'PUT',
+      body: {
+        'nombre': nombre,
+        'correo': correo,
+      },
+    );
+
+    final data = _decodeResponse(response);
+
+    if (response.statusCode != 200) {
+      throw ApiException(
+        data['message']?.toString() ??
+            'No se pudo actualizar el perfil.',
+        statusCode: response.statusCode,
+      );
+    }
+
+    final usuario = data['usuario'];
+
+    if (usuario is! Map<String, dynamic>) {
+      throw const ApiException(
+        'El servidor no devolvió el usuario actualizado.',
+      );
+    }
+
+    final preferences =
+        await SharedPreferences.getInstance();
+
+    final usuarioId = usuario['id'];
+
+    if (usuarioId is int) {
+      await preferences.setInt(
+        'usuario_id',
+        usuarioId,
+      );
+    }
+
+    await preferences.setString(
+      'usuario_nombre',
+      usuario['nombre']?.toString() ?? '',
+    );
+
+    await preferences.setString(
+      'usuario_correo',
+      usuario['correo']?.toString() ?? '',
+    );
+
+    return data;
+  }
+
+  Future<void> changePassword({
+    required String passwordActual,
+    required String passwordNueva,
+  }) async {
+    final response = await _authenticatedRequest(
+      url: '$baseUrl/auth/password',
+      method: 'PUT',
+      body: {
+        'password_actual': passwordActual,
+        'password_nueva': passwordNueva,
+      },
+    );
+
+    final data = _decodeResponse(response);
+
+    if (response.statusCode != 200) {
+      throw ApiException(
+        data['message']?.toString() ??
+            'No se pudo cambiar la contraseña.',
+        statusCode: response.statusCode,
+      );
+    }
+  }
+
+  Future<void> deleteAccount({
+    required String password,
+  }) async {
+    final response = await _authenticatedRequest(
+      url: '$baseUrl/auth/me',
+      method: 'DELETE',
+      body: {
+        'password': password,
+      },
+    );
+
+    final data = _decodeResponse(response);
+
+    if (response.statusCode != 200) {
+      throw ApiException(
+        data['message']?.toString() ??
+            'No se pudo eliminar la cuenta.',
+        statusCode: response.statusCode,
+      );
+    }
+
+    await logout();
+  }
+
   // =========================
   // RUTINAS
   // =========================
