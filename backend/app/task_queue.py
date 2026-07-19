@@ -1,10 +1,10 @@
-import queue
 import threading
 import time
-import uuid
 import traceback
+import uuid
 from datetime import datetime, timezone
 
+from flask import current_app
 from sqlalchemy import func
 
 from app.extensions import db
@@ -14,8 +14,8 @@ from app.models.training import Training
 from app.models.weight import Weight
 
 
-task_queue = queue.Queue()
 task_results = {}
+task_results_lock = threading.Lock()
 
 worker_started = False
 worker_lock = threading.Lock()
@@ -27,42 +27,20 @@ def fecha_actual_utc() -> str:
     ).isoformat()
 
 
-def agregar_tarea(
-    tipo: str,
-    datos: dict,
-) -> str:
-    task_id = str(uuid.uuid4())
-
-    task_results[task_id] = {
-        "id": task_id,
-        "tipo": tipo,
-        "estado": "pendiente",
-        "creada_en": fecha_actual_utc(),
-        "iniciada_en": None,
-        "finalizada_en": None,
-        "resultado": None,
-        "error": None,
-    }
-
-    task_queue.put(
-        {
-            "id": task_id,
-            "tipo": tipo,
-            "datos": datos,
-        }
-    )
-
-    return task_id
-
-
 def obtener_tarea(task_id: str):
-    return task_results.get(task_id)
+    with task_results_lock:
+        tarea = task_results.get(task_id)
+
+        if tarea is None:
+            return None
+
+        return dict(tarea)
 
 
 def generar_resumen_usuario(
     usuario_id: int,
 ):
-    # Simula un procesamiento pesado
+    # Simula una tarea que tarda varios segundos.
     time.sleep(2)
 
     total_rutinas = db.session.scalar(
@@ -108,52 +86,56 @@ def generar_resumen_usuario(
 
     return {
         "usuario_id": usuario_id,
-        "total_rutinas": total_rutinas,
-        "total_ejercicios": total_ejercicios,
-        "total_entrenamientos": total_entrenamientos,
-        "peso_actual": peso_actual,
+        "total_rutinas": int(total_rutinas),
+        "total_ejercicios": int(total_ejercicios),
+        "total_entrenamientos": int(
+            total_entrenamientos
+        ),
+        "peso_actual": (
+            float(peso_actual)
+            if peso_actual is not None
+            else None
+        ),
     }
 
 
-def ejecutar_worker(app):
-    print("===== WORKER INICIADO =====")
+def procesar_tarea(
+    app,
+    task_id: str,
+    tipo: str,
+    datos: dict,
+) -> None:
+    print(
+        f"Procesando tarea {task_id}",
+        flush=True,
+    )
 
-    while True:
-        tarea = None
-        task_id = None
+    with task_results_lock:
+        if task_id not in task_results:
+            return
 
-        try:
-            tarea = task_queue.get()
+        task_results[task_id][
+            "estado"
+        ] = "procesando"
 
-            task_id = tarea["id"]
+        task_results[task_id][
+            "iniciada_en"
+        ] = fecha_actual_utc()
 
-            print(f"Procesando tarea {task_id}")
-
-            task_results[task_id][
-                "estado"
-            ] = "procesando"
-
-            task_results[task_id][
-                "iniciada_en"
-            ] = fecha_actual_utc()
-
-            with app.app_context():
-
-                if tarea["tipo"] == "resumen_usuario":
-
-                    resultado = generar_resumen_usuario(
-                        int(
-                            tarea["datos"][
-                                "usuario_id"
-                            ]
-                        )
+    try:
+        with app.app_context():
+            if tipo == "resumen_usuario":
+                resultado = generar_resumen_usuario(
+                    int(
+                        datos["usuario_id"]
                     )
+                )
+            else:
+                raise ValueError(
+                    "Tipo de tarea no soportado."
+                )
 
-                else:
-                    raise ValueError(
-                        "Tipo de tarea no soportado."
-                    )
-
+        with task_results_lock:
             task_results[task_id][
                 "resultado"
             ] = resultado
@@ -162,16 +144,20 @@ def ejecutar_worker(app):
                 "estado"
             ] = "completada"
 
-            print(
-                f"Tarea {task_id} completada."
-            )
+            task_results[task_id][
+                "error"
+            ] = None
 
-        except Exception as error:
+        print(
+            f"Tarea {task_id} completada.",
+            flush=True,
+        )
 
-            traceback.print_exc()
+    except Exception as error:
+        traceback.print_exc()
 
-            if task_id is not None:
-
+        with task_results_lock:
+            if task_id in task_results:
                 task_results[task_id][
                     "estado"
                 ] = "fallida"
@@ -180,37 +166,82 @@ def ejecutar_worker(app):
                     "error"
                 ] = str(error)
 
-        finally:
+        print(
+            f"Tarea {task_id} fallida: {error}",
+            flush=True,
+        )
 
-            if task_id is not None:
-
+    finally:
+        with task_results_lock:
+            if task_id in task_results:
                 task_results[task_id][
                     "finalizada_en"
                 ] = fecha_actual_utc()
 
-            if tarea is not None:
-                task_queue.task_done()
+        try:
+            with app.app_context():
+                db.session.remove()
+        except Exception:
+            pass
+
+
+def agregar_tarea(
+    tipo: str,
+    datos: dict,
+) -> str:
+    task_id = str(uuid.uuid4())
+
+    app = current_app._get_current_object()
+
+    with task_results_lock:
+        task_results[task_id] = {
+            "id": task_id,
+            "tipo": tipo,
+            "estado": "pendiente",
+            "creada_en": fecha_actual_utc(),
+            "iniciada_en": None,
+            "finalizada_en": None,
+            "resultado": None,
+            "error": None,
+        }
+
+    print(
+        f"Tarea {task_id} agregada.",
+        flush=True,
+    )
+
+    thread = threading.Thread(
+        target=procesar_tarea,
+        args=(
+            app,
+            task_id,
+            tipo,
+            datos,
+        ),
+        daemon=True,
+        name=f"gymcontrol-task-{task_id[:8]}",
+    )
+
+    thread.start()
+
+    return task_id
 
 
 def iniciar_worker(app) -> None:
     global worker_started
 
     with worker_lock:
-
         if worker_started:
             return
 
-        print("Iniciando worker...")
-
-        worker = threading.Thread(
-            target=ejecutar_worker,
-            args=(app,),
-            daemon=True,
-            name="gymcontrol-worker",
+        print(
+            "Iniciando sistema de tareas...",
+            flush=True,
         )
-
-        worker.start()
 
         worker_started = True
 
-        print("Worker iniciado correctamente.")
+        print(
+            "Sistema de tareas iniciado correctamente.",
+            flush=True,
+        )
