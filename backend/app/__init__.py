@@ -51,20 +51,23 @@ def create_app() -> Flask:
 
     app.config["CACHE_DEFAULT_TIMEOUT"] = 60
 
+    # Inicialización de extensiones
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
     cache.init_app(app)
 
+    # CORS limitado al entorno local de Flutter Web.
     cors.init_app(
         app,
         resources={
             r"/api/*": {
-                "origins": "*",
+                "origins": "http://localhost:8080",
             },
         },
     )
 
+    # Modelos
     from .models import (
         Exercise,
         Reminder,
@@ -74,6 +77,7 @@ def create_app() -> Flask:
         Weight,
     )
 
+    # Blueprints
     from .routes.auth import auth_bp
     from .routes.exercises import exercises_bp
     from .routes.optimization import (
@@ -84,6 +88,7 @@ def create_app() -> Flask:
     from .routes.trainings import trainings_bp
     from .routes.weights import weights_bp
 
+    # Registro de rutas
     app.register_blueprint(
         auth_bp,
         url_prefix="/api/v1/auth",
@@ -122,6 +127,7 @@ def create_app() -> Flask:
     # Inicia el worker en segundo plano
     iniciar_worker(app)
 
+    # Ruta principal
     @app.get("/")
     def home():
         return jsonify(
@@ -131,6 +137,7 @@ def create_app() -> Flask:
             }
         ), 200
 
+    # Endpoint para verificar la conexión
     @app.get("/api/v1/health")
     def health():
         return jsonify(

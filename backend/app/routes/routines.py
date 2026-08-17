@@ -5,6 +5,7 @@ from flask_jwt_extended import (
     get_jwt_identity,
     jwt_required,
 )
+from sqlalchemy.orm import joinedload
 
 from app.extensions import cache, db
 from app.models.routine import Routine
@@ -47,8 +48,8 @@ def listar_rutinas():
 
     inicio = perf_counter()
 
-    # Estrategia cache-aside:
-    # primero se busca en caché.
+    # Estrategia Cache Aside:
+    # primero se busca la información en caché.
     datos_cache = cache.get(clave_cache)
 
     if datos_cache is not None:
@@ -70,27 +71,45 @@ def listar_rutinas():
             }
         ), 200
 
-    # Si no existe en caché, se consulta
-    # la base de datos.
-    resultado = db.session.execute(
-        db.select(Routine)
-        .where(
-            Routine.usuario_id == usuario_id,
+    # Si los datos no están en caché,
+    # se consulta la base de datos.
+    #
+    # joinedload aplica Eager Loading para
+    # obtener las rutinas y sus ejercicios
+    # sin generar el problema N+1.
+    resultado = (
+        db.session.execute(
+            db.select(Routine)
+            .options(
+                joinedload(
+                    Routine.ejercicios
+                )
+            )
+            .where(
+                Routine.usuario_id
+                == usuario_id,
+            )
+            .order_by(
+                Routine.id.desc(),
+            )
         )
-        .order_by(
-            Routine.id.desc(),
-        )
-    ).scalars().all()
+        .unique()
+        .scalars()
+        .all()
+    )
 
     respuesta = {
         "rutinas": [
-            rutina.to_dict()
+            rutina.to_dict(
+                incluir_ejercicios=True
+            )
             for rutina in resultado
         ],
         "total": len(resultado),
     }
 
-    # Se guarda la respuesta durante 60 segundos.
+    # Se guarda la respuesta en caché
+    # durante 60 segundos.
     cache.set(
         clave_cache,
         respuesta,
@@ -121,12 +140,25 @@ def listar_rutinas():
 def obtener_rutina(rutina_id):
     usuario_id = obtener_usuario_id()
 
-    rutina = db.session.execute(
-        db.select(Routine).where(
-            Routine.id == rutina_id,
-            Routine.usuario_id == usuario_id,
+    # También se usa joinedload para recuperar
+    # la rutina con todos sus ejercicios.
+    rutina = (
+        db.session.execute(
+            db.select(Routine)
+            .options(
+                joinedload(
+                    Routine.ejercicios
+                )
+            )
+            .where(
+                Routine.id == rutina_id,
+                Routine.usuario_id
+                == usuario_id,
+            )
         )
-    ).scalar_one_or_none()
+        .unique()
+        .scalar_one_or_none()
+    )
 
     if rutina is None:
         return jsonify(
@@ -141,7 +173,9 @@ def obtener_rutina(rutina_id):
 
     return jsonify(
         {
-            "rutina": rutina.to_dict(),
+            "rutina": rutina.to_dict(
+                incluir_ejercicios=True
+            ),
         }
     ), 200
 
@@ -157,7 +191,8 @@ def crear_rutina():
             {
                 "error": "Solicitud inválida",
                 "message": (
-                    "Debe enviar los datos en formato JSON."
+                    "Debe enviar los datos "
+                    "en formato JSON."
                 ),
             }
         ), 400
@@ -205,7 +240,8 @@ def crear_rutina():
             {
                 "error": "Rutina duplicada",
                 "message": (
-                    "Ya tienes una rutina con ese nombre."
+                    "Ya tienes una rutina "
+                    "con ese nombre."
                 ),
             }
         ), 409
@@ -220,9 +256,11 @@ def crear_rutina():
         db.session.add(nueva_rutina)
         db.session.commit()
 
-        # Al cambiar los datos se elimina
-        # explícitamente la información anterior.
-        invalidar_cache_rutinas(usuario_id)
+        # Al crear una rutina se elimina
+        # la información anterior del caché.
+        invalidar_cache_rutinas(
+            usuario_id
+        )
 
     except Exception:
         db.session.rollback()
@@ -258,7 +296,8 @@ def actualizar_rutina(rutina_id):
             {
                 "error": "Solicitud inválida",
                 "message": (
-                    "Debe enviar los datos en formato JSON."
+                    "Debe enviar los datos "
+                    "en formato JSON."
                 ),
             }
         ), 400
@@ -343,7 +382,11 @@ def actualizar_rutina(rutina_id):
     try:
         db.session.commit()
 
-        invalidar_cache_rutinas(usuario_id)
+        # Se invalida el caché porque
+        # la información fue modificada.
+        invalidar_cache_rutinas(
+            usuario_id
+        )
 
     except Exception:
         db.session.rollback()
@@ -352,7 +395,8 @@ def actualizar_rutina(rutina_id):
             {
                 "error": "Error interno",
                 "message": (
-                    "No se pudo actualizar la rutina."
+                    "No se pudo actualizar "
+                    "la rutina."
                 ),
             }
         ), 500
@@ -395,7 +439,11 @@ def eliminar_rutina(rutina_id):
         db.session.delete(rutina)
         db.session.commit()
 
-        invalidar_cache_rutinas(usuario_id)
+        # Se invalida el caché porque
+        # una rutina fue eliminada.
+        invalidar_cache_rutinas(
+            usuario_id
+        )
 
     except Exception:
         db.session.rollback()

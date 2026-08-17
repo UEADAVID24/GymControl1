@@ -14,9 +14,34 @@ class ApiService {
 
   static final ApiService instance = ApiService._();
 
-  // Para el emulador Android.
-  static const String baseUrl =
-      'https://gymcontrol-api-lm7l.onrender.com/api/v1';
+  static const String apiRootUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'http://127.0.0.1:5000',
+);
+
+static const String baseUrl = '$apiRootUrl/api/v1';
+
+Future<Map<String, dynamic>> verificarConexionApi() async {
+  final response = await http.get(
+    Uri.parse('$baseUrl/health'),
+  );
+
+  final data = _decodeResponse(response);
+
+  if (response.statusCode != 200) {
+    throw ApiException(
+      data['message']?.toString() ??
+          'No se pudo conectar con la API.',
+      statusCode: response.statusCode,
+    );
+  }
+
+  return {
+    ...data,
+    'message':
+        '${data['service'] ?? 'GymControl Backend'} - estado: ${data['status'] ?? 'ok'}',
+  };
+}
 
   // =========================
   // AUTENTICACIÓN
