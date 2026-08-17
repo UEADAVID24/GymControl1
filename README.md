@@ -36,7 +36,10 @@ Desarrollar una aplicación móvil multiplataforma que permita organizar rutinas
 ## Herramientas
 
 - Visual Studio Code
+- Android Studio
 - Android SDK 36.0.0
+- Visual Studio Community 2026
+- Windows SDK
 - Google Chrome
 - Git
 - GitHub
@@ -49,7 +52,9 @@ Desarrollar una aplicación móvil multiplataforma que permita organizar rutinas
 
 Para el desarrollo de GymControl se seleccionó **Flutter**, debido a que permite desarrollar aplicaciones multiplataforma utilizando una única base de código escrita en Dart.
 
-Esta elección facilita el mantenimiento del proyecto y permite trabajar con diferentes plataformas sin desarrollar una aplicación independiente para cada una. Además, Flutter dispone de Hot Reload, característica que permite visualizar rápidamente los cambios realizados durante el desarrollo.
+Esta elección facilita el mantenimiento del proyecto y permite trabajar con diferentes plataformas sin desarrollar una aplicación independiente para cada una. Además, Flutter dispone de **Hot Reload**, característica que permite visualizar rápidamente los cambios realizados durante el desarrollo.
+
+Flutter también proporciona herramientas para compilar y ejecutar aplicaciones en Android, web y escritorio, lo que facilita las pruebas del proyecto utilizando diferentes destinos de ejecución.
 
 ---
 
@@ -71,6 +76,8 @@ Worker
      │
 PostgreSQL
 ```
+
+Flutter funciona como cliente y realiza solicitudes HTTP hacia la API REST desarrollada con Flask. El backend se encarga de procesar las solicitudes, aplicar las reglas de negocio, gestionar la autenticación y comunicarse con la base de datos.
 
 ---
 
@@ -99,6 +106,7 @@ GymControl/
 │
 ├── test/
 ├── web/
+├── windows/
 ├── pubspec.yaml
 └── README.md
 ```
@@ -132,6 +140,7 @@ Dart: 3.12.2
 DevTools: 2.57.0
 Android SDK: 36.0.0
 Java: OpenJDK 21
+Visual Studio: Community 2026
 Sistema operativo: Windows 11 Pro 64-bit
 ```
 
@@ -148,6 +157,10 @@ Las principales extensiones utilizadas son:
 
 Estas extensiones permiten integrar las herramientas del SDK de Flutter con Visual Studio Code, ejecutar la aplicación, utilizar Hot Reload, depurar el código y facilitar el desarrollo en Dart.
 
+También se utilizó **Android Studio** para disponer del Android SDK y de la cadena de herramientas necesaria para el desarrollo de aplicaciones Android.
+
+Para completar la cadena de herramientas de Windows se instaló **Visual Studio Community 2026** con los componentes de desarrollo de escritorio con C++ requeridos por Flutter.
+
 ---
 
 # 🔍 Verificación del entorno
@@ -158,6 +171,26 @@ Para comprobar la instalación y configuración de Flutter se utiliza:
 flutter doctor -v
 ```
 
+Después de instalar y configurar todas las herramientas necesarias, el diagnóstico final confirmó correctamente:
+
+- Flutter.
+- Dart.
+- Android SDK.
+- Java.
+- Google Chrome.
+- Visual Studio Community 2026.
+- Windows SDK.
+- Dispositivos disponibles.
+- Recursos de red.
+
+El resultado final del diagnóstico fue:
+
+```text
+No issues found!
+```
+
+Esto confirma que el entorno de desarrollo requerido por Flutter se encuentra correctamente configurado.
+
 También se pueden consultar los dispositivos disponibles mediante:
 
 ```bash
@@ -166,15 +199,13 @@ flutter devices
 
 Durante las pruebas se detectaron los siguientes destinos:
 
-- Google Chrome (Web)
-- Microsoft Edge (Web)
-- Windows Desktop
+- Windows Desktop.
+- Google Chrome (Web).
+- Microsoft Edge (Web).
 
-Para este taller se seleccionó **Google Chrome** como destino de ejecución, debido a que permite ejecutar y comprobar el proyecto Flutter utilizando los recursos disponibles en el equipo.
+Para este taller se seleccionó **Google Chrome** como destino principal de ejecución, debido a que permite ejecutar y comprobar el proyecto mediante Flutter Web utilizando los recursos disponibles en el equipo.
 
-El diagnóstico confirmó el correcto funcionamiento de Flutter, Dart, Android SDK, Chrome, los dispositivos disponibles y los recursos de red.
-
-El comando `flutter doctor -v` reportó únicamente que Visual Studio no se encuentra instalado para el desarrollo de aplicaciones de escritorio Windows. Este componente no corresponde al destino seleccionado para la demostración, ya que GymControl se ejecuta mediante Flutter Web utilizando Google Chrome.
+Además, Chrome facilita las pruebas de comunicación entre la aplicación Flutter y el backend Flask ejecutado localmente.
 
 ---
 
@@ -222,13 +253,15 @@ El servidor local queda disponible en:
 http://127.0.0.1:5000
 ```
 
+Cuando Flask se encuentra funcionando correctamente, la terminal muestra que el servidor está disponible en el puerto 5000.
+
 ---
 
 # 🌐 Configuración de la URL de la API
 
 GymControl utiliza una variable de entorno de compilación para definir la dirección base de la API.
 
-En el archivo `api_service.dart` se utiliza:
+En el archivo `lib/services/api_service.dart` se utiliza:
 
 ```dart
 static const String apiRootUrl = String.fromEnvironment(
@@ -254,11 +287,15 @@ Backend Flask: http://127.0.0.1:5000
 
 El puerto 8080 se establece de forma fija para mantener un origen conocido durante las pruebas de comunicación con el backend.
 
+La utilización de `API_BASE_URL` permite modificar la dirección del servidor sin cambiar directamente el código de la aplicación.
+
 ---
 
 # 🔐 Configuración de CORS
 
 Durante el desarrollo se configuró CORS de manera limitada para permitir únicamente las solicitudes provenientes del entorno local utilizado por Flutter Web.
+
+En el backend Flask se utiliza:
 
 ```python
 cors.init_app(
@@ -273,11 +310,26 @@ cors.init_app(
 
 Esta configuración evita utilizar un origen abierto para todas las solicitudes y limita el acceso al origen local utilizado durante el desarrollo.
 
+Por lo tanto:
+
+```text
+Origen autorizado:
+http://localhost:8080
+```
+
+De esta manera se autoriza de forma acotada el tráfico desde Flutter Web hacia el backend local.
+
 ---
 
 # 🔄 Hot Reload
 
 Flutter permite aplicar cambios en la aplicación sin reiniciar completamente su ejecución.
+
+Primero se ejecuta la aplicación:
+
+```powershell
+flutter run -d chrome --web-port 8080 --dart-define=API_BASE_URL=http://127.0.0.1:5000
+```
 
 Mientras `flutter run` se encuentra activo, se utiliza:
 
@@ -293,6 +345,8 @@ Reloaded application...
 ```
 
 Esta funcionalidad facilita las pruebas y permite visualizar rápidamente los cambios realizados en el código.
+
+Durante las pruebas de GymControl se comprobó correctamente el funcionamiento de Hot Reload.
 
 ---
 
@@ -312,13 +366,40 @@ http://127.0.0.1:5000/api/v1/health
 
 El endpoint devuelve información sobre el estado del servicio, caché y worker del backend.
 
-Cuando la comunicación es exitosa, el backend responde con estado HTTP **200 OK** y la aplicación muestra:
+Un ejemplo de la información devuelta por el backend es:
+
+```json
+{
+  "service": "GymControl Backend",
+  "status": "ok",
+  "cache": "SimpleCache",
+  "worker": "activo"
+}
+```
+
+Desde Flutter se implementó una función encargada de realizar la solicitud HTTP hacia este endpoint.
+
+En la interfaz de GymControl se agregó el botón:
+
+```text
+Probar conexión con API
+```
+
+Al presionarlo, Flutter realiza la solicitud hacia Flask.
+
+Cuando la comunicación es exitosa, el backend responde con estado HTTP:
+
+```text
+200 OK
+```
+
+Y la aplicación muestra:
 
 ```text
 GymControl Backend - estado: ok
 ```
 
-Esta prueba permite comprobar que la aplicación Flutter puede realizar una solicitud hacia un endpoint de la API propia de GymControl y recibir correctamente la respuesta del backend.
+Esta prueba comprueba que la aplicación Flutter puede realizar una solicitud hacia un endpoint de su propia API y recibir correctamente la respuesta enviada por el backend Flask.
 
 ---
 
@@ -349,15 +430,49 @@ La aplicación implementa:
 
 # ⚠️ Limitaciones y dificultades encontradas
 
-Durante la configuración del entorno se presentaron algunas dificultades relacionadas principalmente con la comunicación entre Flutter Web y Flask.
+Durante la configuración del entorno se presentaron algunas dificultades que fueron solucionadas durante el desarrollo.
 
-Inicialmente, Google Chrome bloqueó la solicitud realizada desde Flutter debido a la política CORS y se presentó el error `Failed to fetch`. Para solucionarlo se configuró Flask-CORS y se autorizó específicamente el origen local `http://localhost:8080`.
+Inicialmente, Google Chrome bloqueó la solicitud realizada desde Flutter debido a la política CORS y se presentó el error:
+
+```text
+Failed to fetch
+```
+
+Para solucionarlo se configuró Flask-CORS y se autorizó específicamente el origen local:
+
+```text
+http://localhost:8080
+```
 
 También fue necesario establecer el puerto 8080 de manera fija para Flutter Web, permitiendo mantener un origen conocido durante las pruebas y configurar correctamente CORS.
 
 Otra dificultad presentada fue encontrar el puerto 8080 ocupado por una ejecución anterior de Flutter. Para solucionarlo se cerró la sesión anterior antes de volver a ejecutar la aplicación.
 
-El diagnóstico de Flutter indicó además que Visual Studio no se encuentra instalado para el desarrollo de aplicaciones de escritorio Windows. Esta situación no afecta la plataforma prevista para esta demostración, debido a que se seleccionó Google Chrome como destino de Flutter Web.
+Durante el diagnóstico inicial mediante:
+
+```bash
+flutter doctor -v
+```
+
+se detectó que Visual Studio no se encontraba instalado para el desarrollo de aplicaciones Windows.
+
+Para resolver este hallazgo se instaló **Visual Studio Community 2026** con la carga de trabajo correspondiente al desarrollo de escritorio con C++ y los componentes necesarios.
+
+Después de completar la instalación y reiniciar el equipo, se ejecutó nuevamente:
+
+```bash
+flutter doctor -v
+```
+
+El diagnóstico reconoció correctamente Visual Studio y todos los demás componentes del entorno.
+
+El resultado final fue:
+
+```text
+No issues found!
+```
+
+De esta manera se resolvieron todos los hallazgos reportados por el comando de diagnóstico de Flutter.
 
 ---
 
@@ -366,7 +481,13 @@ El diagnóstico de Flutter indicó además que Visual Studio no se encuentra ins
 Se verificó el funcionamiento de:
 
 - Configuración del entorno Flutter.
+- Instalación de Flutter SDK y Dart.
+- Configuración de Visual Studio Code.
+- Extensiones Flutter y Dart.
+- Android SDK.
+- Visual Studio Community 2026.
 - Ejecución de `flutter doctor -v`.
+- Diagnóstico final `No issues found!`.
 - Detección de dispositivos mediante `flutter devices`.
 - Ejecución del proyecto Flutter en Google Chrome.
 - Funcionamiento de Hot Reload.
@@ -378,6 +499,8 @@ Se verificó el funcionamiento de:
 - Registro de peso.
 - Perfil de usuario.
 - API REST mediante Postman.
+- Configuración de `API_BASE_URL`.
+- Configuración limitada de CORS.
 - Comunicación Flutter → Flask.
 - Endpoint `/api/v1/health`.
 - Respuesta HTTP 200 del backend.
@@ -396,11 +519,24 @@ La documentación técnica del proyecto se encuentra en la carpeta **docs/**.
 - Optimizaciones.
 - Pruebas.
 
+Esta documentación complementa el README y describe diferentes aspectos técnicos relacionados con el desarrollo de GymControl.
+
 ---
 
 # 📹 Video de demostración
 
-El video de demostración presenta la configuración del entorno, las versiones instaladas, el diagnóstico de Flutter, la estructura del proyecto, la ejecución de GymControl, Hot Reload y la comunicación con el backend.
+El video de demostración presenta:
+
+1. Selección y justificación del framework Flutter.
+2. Instalación y configuración del entorno y herramientas.
+3. Diagnóstico mediante `flutter doctor -v`.
+4. Verificación de los destinos de ejecución.
+5. Ejecución del proyecto y Hot Reload.
+6. Configuración de la variable `API_BASE_URL`.
+7. Configuración acotada de CORS.
+8. Comunicación entre Flutter y la API Flask.
+9. Documentación del entorno en README y GitHub.
+10. Conclusiones de la configuración realizada.
 
 Agregar el enlace del video cuando esté disponible:
 
