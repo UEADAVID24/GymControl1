@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../models/reminder_model.dart';
 import '../models/routine_model.dart';
 import '../models/training_model.dart';
 import '../models/weight_model.dart';
+import '../providers/session_provider.dart';
 import '../services/api_service.dart';
 import 'calendar_screen.dart';
 import 'optimization_screen.dart';
@@ -51,7 +53,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       _cargandoResumen = true;
 
-      // Se limpian los valores anteriores.
       _totalRutinas = 0;
       _totalEjercicios = 0;
       _totalEntrenamientos = 0;
@@ -122,6 +123,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _cargandoResumen = false;
       });
 
+      if (error.statusCode == 401) {
+        await _cerrarSesion();
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(error.message),
@@ -158,8 +164,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final fechaB =
             DateTime.tryParse(b.fecha);
 
-        if (fechaA == null &&
-            fechaB == null) {
+        if (fechaA == null && fechaB == null) {
           return (b.id ?? 0).compareTo(
             a.id ?? 0,
           );
@@ -204,6 +209,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _abrirPantalla(
     Widget pantalla,
   ) async {
+    final session =
+        context.read<SessionProvider>();
+
+    if (!session.autenticado) {
+      if (!mounted) return;
+
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/login',
+        (route) => false,
+      );
+
+      return;
+    }
+
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -213,17 +233,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     if (!mounted) return;
 
+    final sesionActual =
+        context.read<SessionProvider>();
+
+    if (!sesionActual.autenticado) {
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/login',
+        (route) => false,
+      );
+
+      return;
+    }
+
     await _cargarResumen();
   }
 
   Future<void> _cerrarSesion() async {
-    await ApiService.instance.logout();
+    await context
+        .read<SessionProvider>()
+        .cerrarSesion();
 
     if (!mounted) return;
 
     Navigator.pushNamedAndRemoveUntil(
       context,
-      '/',
+      '/login',
       (route) => false,
     );
   }
@@ -251,15 +286,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(width: 12),
           SummaryCard(
             icon: Icons.sports_gymnastics,
-            value:
-                _totalEjercicios.toString(),
+            value: _totalEjercicios.toString(),
             label: 'Ejercicios',
           ),
           const SizedBox(width: 12),
           SummaryCard(
             icon: Icons.calendar_month,
-            value: _totalEntrenamientos
-                .toString(),
+            value:
+                _totalEntrenamientos.toString(),
             label: 'Entrenamientos',
           ),
           const SizedBox(width: 12),
@@ -270,10 +304,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(width: 12),
           SummaryCard(
-            icon:
-                Icons.notifications_active,
-            value: _recordatoriosActivos
-                .toString(),
+            icon: Icons.notifications_active,
+            value:
+                _recordatoriosActivos.toString(),
             label: 'Recordatorios activos',
           ),
         ],
@@ -283,6 +316,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final session =
+        context.watch<SessionProvider>();
+
+    if (!session.autenticado) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) {
+        if (!mounted) return;
+
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/login',
+          (route) => false,
+        );
+      });
+
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    final usuarioId =
+        session.usuarioId ?? widget.usuarioId;
+
+    final nombreUsuario =
+        session.nombreUsuario ??
+            widget.nombreUsuario;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('GymControl'),
@@ -293,14 +355,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onPressed: _cargandoResumen
                 ? null
                 : _cargarResumen,
-            icon:
-                const Icon(Icons.refresh),
+            icon: const Icon(
+              Icons.refresh,
+            ),
           ),
           IconButton(
             tooltip: 'Cerrar sesión',
             onPressed: _cerrarSesion,
-            icon:
-                const Icon(Icons.logout),
+            icon: const Icon(
+              Icons.logout,
+            ),
           ),
         ],
       ),
@@ -314,20 +378,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const EdgeInsets.all(20),
             children: [
               Text(
-                '¡Bienvenido, ${widget.nombreUsuario}!',
+                '¡Bienvenido, $nombreUsuario!',
                 style: const TextStyle(
                   fontSize: 26,
                   fontWeight:
                       FontWeight.bold,
                 ),
               ),
+
               const SizedBox(height: 8),
+
               const Text(
                 'Este es el resumen de tu actividad en GymControl.',
                 style: TextStyle(
                   fontSize: 16,
                 ),
               ),
+
               const SizedBox(height: 22),
 
               _construirResumen(),
@@ -362,11 +429,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       _abrirPantalla(
                         RoutineScreen(
                           usuarioId:
-                              widget.usuarioId,
+                              usuarioId,
                         ),
                       );
                     },
                   ),
+
                   DashboardOption(
                     icon:
                         Icons.calendar_month,
@@ -375,11 +443,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       _abrirPantalla(
                         TrainingScreen(
                           usuarioId:
-                              widget.usuarioId,
+                              usuarioId,
                         ),
                       );
                     },
                   ),
+
                   DashboardOption(
                     icon: Icons.event,
                     title: 'Calendario',
@@ -387,11 +456,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       _abrirPantalla(
                         CalendarScreen(
                           usuarioId:
-                              widget.usuarioId,
+                              usuarioId,
                         ),
                       );
                     },
                   ),
+
                   DashboardOption(
                     icon: Icons
                         .notifications_active,
@@ -400,11 +470,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       _abrirPantalla(
                         ReminderScreen(
                           usuarioId:
-                              widget.usuarioId,
+                              usuarioId,
                         ),
                       );
                     },
                   ),
+
                   DashboardOption(
                     icon: Icons.show_chart,
                     title: 'Progreso',
@@ -412,11 +483,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       _abrirPantalla(
                         ProgressScreen(
                           usuarioId:
-                              widget.usuarioId,
+                              usuarioId,
                         ),
                       );
                     },
                   ),
+
                   DashboardOption(
                     icon:
                         Icons.monitor_weight,
@@ -425,11 +497,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       _abrirPantalla(
                         WeightScreen(
                           usuarioId:
-                              widget.usuarioId,
+                              usuarioId,
                         ),
                       );
                     },
                   ),
+
                   DashboardOption(
                     icon: Icons.person,
                     title: 'Perfil',
@@ -437,11 +510,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       _abrirPantalla(
                         ProfileScreen(
                           usuarioId:
-                              widget.usuarioId,
+                              usuarioId,
                         ),
                       );
                     },
                   ),
+
                   DashboardOption(
                     icon: Icons.speed,
                     title: 'Optimización',
@@ -460,8 +534,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: _cerrarSesion,
-                  icon:
-                      const Icon(Icons.logout),
+                  icon: const Icon(
+                    Icons.logout,
+                  ),
                   label: const Text(
                     'Cerrar sesión',
                   ),
@@ -511,7 +586,9 @@ class SummaryCard extends StatelessWidget {
                 .colorScheme
                 .onPrimaryContainer,
           ),
+
           const SizedBox(height: 6),
+
           Text(
             value,
             style: const TextStyle(
@@ -520,6 +597,7 @@ class SummaryCard extends StatelessWidget {
                   FontWeight.bold,
             ),
           ),
+
           Text(
             label,
             textAlign: TextAlign.center,
@@ -564,7 +642,9 @@ class DashboardOption
                 size: 50,
                 color: Colors.deepPurple,
               ),
+
               const SizedBox(height: 12),
+
               Text(
                 title,
                 textAlign:

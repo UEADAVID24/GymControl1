@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import 'providers/session_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
 import 'services/api_service.dart';
@@ -10,7 +12,12 @@ Future<void> main() async {
 
   await NotificationService.instance.initialize();
 
-  runApp(const GymControlApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => SessionProvider(),
+      child: const GymControlApp(),
+    ),
+  );
 }
 
 class GymControlApp extends StatelessWidget {
@@ -78,9 +85,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 size: 100,
                 color: Colors.deepPurple,
               ),
-
               const SizedBox(height: 24),
-
               const Text(
                 'GymControl',
                 style: TextStyle(
@@ -88,9 +93,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-
               const SizedBox(height: 12),
-
               const Text(
                 'Organiza tus rutinas, registra tu progreso y mantén la constancia en tus entrenamientos.',
                 textAlign: TextAlign.center,
@@ -98,9 +101,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   fontSize: 17,
                 ),
               ),
-
               const SizedBox(height: 40),
-
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -110,14 +111,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                       '/login',
                     );
                   },
-                  child: const Text(
-                    'Iniciar sesión',
-                  ),
+                  child: const Text('Iniciar sesión'),
                 ),
               ),
-
               const SizedBox(height: 12),
-
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
@@ -127,29 +124,21 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                       '/register',
                     );
                   },
-                  child: const Text(
-                    'Crear cuenta',
-                  ),
+                  child: const Text('Crear cuenta'),
                 ),
               ),
-
               const SizedBox(height: 20),
-
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: probarConexionApi,
-                  icon: const Icon(
-                    Icons.cloud_done,
-                  ),
+                  icon: const Icon(Icons.cloud_done),
                   label: const Text(
                     'Probar conexión con API',
                   ),
                 ),
               ),
-
               const SizedBox(height: 12),
-
               Text(
                 mensajeApi,
                 textAlign: TextAlign.center,
