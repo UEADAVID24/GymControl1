@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/user_model.dart';
@@ -234,6 +235,161 @@ class _ProfileScreenState
     });
   }
 
+// =========================
+// PERMISO DE CÁMARA - SEMANA 14
+// =========================
+
+Future<void> tomarFotoConPermiso() async {
+  // Primero comprobamos el estado actual del permiso.
+  PermissionStatus estado = await Permission.camera.status;
+
+  // Si ya está concedido, abrimos directamente la cámara.
+  if (estado.isGranted) {
+    await seleccionarFoto(ImageSource.camera);
+    return;
+  }
+
+  // Si el permiso está bloqueado permanentemente,
+  // no volvemos a solicitarlo.
+  if (estado.isPermanentlyDenied || estado.isRestricted) {
+    if (!mounted) return;
+
+    await mostrarDialogoAjustesCamara();
+    return;
+  }
+
+  // Antes de solicitar el permiso mostramos al usuario
+  // una explicación clara de por qué GymControl lo necesita.
+  if (!mounted) return;
+
+  final continuar = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: const Text(
+          'Permiso de cámara',
+        ),
+        content: const Text(
+          'GymControl necesita acceso a la cámara únicamente '
+          'cuando deseas tomar una fotografía para tu perfil. '
+          'Puedes continuar usando la aplicación aunque no '
+          'concedas este permiso.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(
+                dialogContext,
+                false,
+              );
+            },
+            child: const Text(
+              'Ahora no',
+            ),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(
+                dialogContext,
+                true,
+              );
+            },
+            child: const Text(
+              'Continuar',
+            ),
+          ),
+        ],
+      );
+    },
+  );
+
+  if (continuar != true) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'No se concedió acceso a la cámara. '
+          'Puedes seguir utilizando GymControl normalmente.',
+        ),
+      ),
+    );
+
+    return;
+  }
+
+  // El permiso se solicita solamente después de que
+  // el usuario intenta utilizar la cámara.
+  estado = await Permission.camera.request();
+
+  if (estado.isGranted) {
+    await seleccionarFoto(ImageSource.camera);
+    return;
+  }
+
+  if (estado.isPermanentlyDenied || estado.isRestricted) {
+    if (!mounted) return;
+
+    await mostrarDialogoAjustesCamara();
+    return;
+  }
+
+  // Permiso denegado de forma normal.
+  if (!mounted) return;
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text(
+        'Permiso de cámara denegado. '
+        'Puedes continuar usando GymControl sin esta función.',
+      ),
+    ),
+  );
+}
+
+Future<void> mostrarDialogoAjustesCamara() async {
+  if (!mounted) return;
+
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: const Text(
+          'Permiso de cámara bloqueado',
+        ),
+        content: const Text(
+          'El acceso a la cámara está desactivado para GymControl. '
+          'Para volver a utilizar esta función debes habilitar '
+          'el permiso desde los ajustes del dispositivo. '
+          'El resto de la aplicación seguirá funcionando normalmente.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+            },
+            child: const Text(
+              'Cancelar',
+            ),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+
+              await openAppSettings();
+            },
+            icon: const Icon(
+              Icons.settings,
+            ),
+            label: const Text(
+              'Abrir ajustes',
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
   Future<void> seleccionarFoto(
     ImageSource origen,
   ) async {
@@ -412,9 +568,7 @@ class _ProfileScreenState
                     sheetContext,
                   );
 
-                  seleccionarFoto(
-                    ImageSource.camera,
-                  );
+                    tomarFotoConPermiso();
                 },
               ),
               if (fotoPerfil != null)

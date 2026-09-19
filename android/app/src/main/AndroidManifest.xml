@@ -1,6 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Permiso para comunicarse con el backend -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Semana 14: permiso para utilizar la cámara -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+
+    <!-- Semana 14: permiso para mostrar notificaciones en Android 13 o superior -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
         android:label="GymControl"

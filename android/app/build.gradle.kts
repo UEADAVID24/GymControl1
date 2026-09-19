@@ -6,7 +6,10 @@ plugins {
 
 android {
     namespace = "com.example.gymcontrol"
-    compileSdk = flutter.compileSdkVersion
+
+    // Semana 14: requerido por permission_handler_android
+    compileSdk = 37
+
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

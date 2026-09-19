@@ -42,10 +42,25 @@ class NotificationService {
       settings: initializationSettings,
     );
 
-    await _notifications
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
+    // Semana 14:
+    // El permiso de notificaciones NO se solicita al iniciar la app.
+    // Se solicitará únicamente cuando el usuario utilice
+    // la funcionalidad de recordatorios.
+  }
+
+  Future<bool> requestNotificationPermission() async {
+    final androidImplementation =
+        _notifications.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+
+    if (androidImplementation == null) {
+      return true;
+    }
+
+    final granted =
+        await androidImplementation.requestNotificationsPermission();
+
+    return granted ?? false;
   }
 
   Future<void> showInstantNotification({

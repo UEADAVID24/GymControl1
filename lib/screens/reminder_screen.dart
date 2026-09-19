@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/reminder_model.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../services/api_service.dart';
 import '../services/notification_service.dart';
 
@@ -94,25 +95,151 @@ class _ReminderScreenState extends State<ReminderScreen> {
       minute: minuto,
     ).format(context);
   }
+Future<bool> _solicitarPermisoNotificaciones() async {
+  PermissionStatus estado = await Permission.notification.status;
 
-  Future<void> _programarNotificacion(
-    ReminderModel recordatorio,
-  ) async {
-    if (recordatorio.id == null || !recordatorio.activo) {
-      return;
-    }
-
-    await _notificationService.scheduleWeeklyNotification(
-      id: recordatorio.id!,
-      title: recordatorio.titulo,
-      body: recordatorio.mensaje.isEmpty
-          ? 'Es momento de realizar tu entrenamiento.'
-          : recordatorio.mensaje,
-      dayOfWeek: recordatorio.diaSemana,
-      hour: recordatorio.hora,
-      minute: recordatorio.minuto,
-    );
+  if (estado.isGranted) {
+    return true;
   }
+
+  if (estado.isPermanentlyDenied || estado.isRestricted) {
+    if (!mounted) return false;
+
+    await _mostrarAjustesNotificaciones();
+    return false;
+  }
+
+  if (!mounted) return false;
+
+  final continuar = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: const Text('Permiso de notificaciones'),
+        content: const Text(
+          'GymControl necesita permiso para enviarte recordatorios '
+          'de tus rutinas y entrenamientos. Puedes guardar y consultar '
+          'tus recordatorios aunque no concedas este permiso.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext, false);
+            },
+            child: const Text('Ahora no'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(dialogContext, true);
+            },
+            child: const Text('Continuar'),
+          ),
+        ],
+      );
+    },
+  );
+
+  if (continuar != true) {
+    if (!mounted) return false;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'No se activaron las notificaciones. '
+          'Puedes continuar usando tus recordatorios normalmente.',
+        ),
+      ),
+    );
+
+    return false;
+  }
+
+  estado = await Permission.notification.request();
+
+  if (estado.isGranted) {
+    return true;
+  }
+
+  if (estado.isPermanentlyDenied || estado.isRestricted) {
+    if (!mounted) return false;
+
+    await _mostrarAjustesNotificaciones();
+    return false;
+  }
+
+  if (!mounted) return false;
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text(
+        'Permiso de notificaciones denegado. '
+        'El recordatorio puede guardarse, pero no generará una notificación.',
+      ),
+    ),
+  );
+
+  return false;
+}
+
+Future<void> _mostrarAjustesNotificaciones() async {
+  if (!mounted) return;
+
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: const Text('Notificaciones bloqueadas'),
+        content: const Text(
+          'Las notificaciones están desactivadas para GymControl. '
+          'Para recibir avisos debes habilitarlas desde los ajustes '
+          'del dispositivo. Tus recordatorios seguirán disponibles '
+          'aunque no habilites este permiso.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+            },
+            child: const Text('Cancelar'),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              await openAppSettings();
+            },
+            icon: const Icon(Icons.settings),
+            label: const Text('Abrir ajustes'),
+          ),
+        ],
+      );
+    },
+  );
+}
+Future<void> _programarNotificacion(
+  ReminderModel recordatorio,
+) async {
+  if (recordatorio.id == null || !recordatorio.activo) {
+    return;
+  }
+
+  final permisoConcedido =
+      await _solicitarPermisoNotificaciones();
+
+  if (!permisoConcedido) {
+    return;
+  }
+
+  await _notificationService.scheduleWeeklyNotification(
+    id: recordatorio.id!,
+    title: recordatorio.titulo,
+    body: recordatorio.mensaje.isEmpty
+        ? 'Es momento de realizar tu entrenamiento.'
+        : recordatorio.mensaje,
+    dayOfWeek: recordatorio.diaSemana,
+    hour: recordatorio.hora,
+    minute: recordatorio.minuto,
+  );
+}
 
   Future<void> _mostrarFormulario({
     ReminderModel? recordatorio,
