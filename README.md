@@ -2,13 +2,15 @@
 
 Aplicación móvil desarrollada como proyecto académico para la asignatura **Aplicaciones Móviles** de la **Universidad Estatal Amazónica (UEA)**.
 
-GymControl permite gestionar rutinas de entrenamiento, ejercicios, registrar el peso corporal, administrar el perfil del usuario y mantener una sesión autenticada mediante una arquitectura cliente-servidor basada en Flutter y Flask.
+GymControl permite gestionar rutinas de entrenamiento, ejercicios, registrar el peso corporal, administrar recordatorios, controlar el progreso y gestionar el perfil del usuario mediante una arquitectura cliente-servidor basada en Flutter y Flask.
 
 ---
 
 # 📌 Objetivo
 
-Desarrollar una aplicación móvil multiplataforma que permita organizar rutinas de entrenamiento, registrar ejercicios, controlar el progreso físico del usuario y gestionar de forma segura el acceso a las diferentes funcionalidades mediante autenticación y manejo de estado.
+Desarrollar una aplicación móvil que permita organizar rutinas de entrenamiento, registrar ejercicios, controlar el progreso físico del usuario y gestionar de forma segura el acceso a las diferentes funcionalidades.
+
+El proyecto incorpora funcionalidades nativas del dispositivo, como el uso de la cámara para la fotografía de perfil y las notificaciones locales para los recordatorios de entrenamiento.
 
 ---
 
@@ -18,7 +20,7 @@ Desarrollar una aplicación móvil multiplataforma que permita organizar rutinas
 
 - Flutter 3.44.6
 - Dart 3.12.2
-- Provider 6.1.5+1
+- Provider
 - HTTP
 - SharedPreferences
 
@@ -37,19 +39,16 @@ Desarrollar una aplicación móvil multiplataforma que permita organizar rutinas
 - JWT (JSON Web Token)
 - Protección de funcionalidades autenticadas
 - Validación de credenciales
+- Manejo de permisos nativos
 
 ## Herramientas
 
 - Visual Studio Code
 - Android Studio
-- Android SDK 36.0.0
-- Visual Studio Community 2026
-- Windows SDK
-- Google Chrome
+- Android SDK
 - Git
 - GitHub
 - Postman
-- Render
 
 ---
 
@@ -57,15 +56,13 @@ Desarrollar una aplicación móvil multiplataforma que permita organizar rutinas
 
 Para el desarrollo de GymControl se seleccionó **Flutter**, debido a que permite desarrollar aplicaciones multiplataforma utilizando una única base de código escrita en Dart.
 
-Esta elección facilita el mantenimiento del proyecto y permite trabajar con diferentes plataformas sin desarrollar una aplicación independiente para cada una. Además, Flutter dispone de **Hot Reload**, característica que permite visualizar rápidamente los cambios realizados durante el desarrollo.
-
-Flutter también proporciona herramientas para compilar y ejecutar aplicaciones en Android, web y escritorio, lo que facilita las pruebas del proyecto utilizando diferentes destinos de ejecución.
+Flutter facilita el mantenimiento del proyecto y permite integrar funcionalidades propias del dispositivo mediante plugins compatibles con Android e iOS.
 
 ---
 
 # 🏗 Arquitectura
 
-El proyecto utiliza una arquitectura Cliente-Servidor.
+GymControl utiliza una arquitectura Cliente-Servidor.
 
 ```text
 Flutter
@@ -84,9 +81,9 @@ PostgreSQL
 
 Flutter funciona como cliente y realiza solicitudes HTTP hacia la API REST desarrollada con Flask.
 
-El backend se encarga de procesar las solicitudes, aplicar las reglas de negocio, gestionar la autenticación y comunicarse con la base de datos.
+El backend procesa las solicitudes, aplica las reglas de negocio, administra la autenticación y se comunica con PostgreSQL.
 
-Para el manejo del estado de autenticación en Flutter se utiliza **Provider**, permitiendo conservar los datos del usuario durante la navegación entre las diferentes pantallas.
+Para el manejo del estado de autenticación se utiliza **Provider** mediante `SessionProvider`.
 
 ---
 
@@ -98,19 +95,11 @@ GymControl/
 ├── android/
 ├── backend/
 ├── docs/
-│   ├── 01-Constitucion-del-Proyecto.md
-│   ├── 02-SDD.md
-│   ├── 03-Arquitectura.md
-│   ├── 04-API-REST.md
-│   ├── 05-Optimizaciones.md
-│   └── 06-Pruebas.md
-│
 ├── ios/
 ├── lib/
 │   ├── database/
 │   ├── models/
 │   ├── providers/
-│   │   └── session_provider.dart
 │   ├── screens/
 │   ├── services/
 │   └── main.dart
@@ -122,7 +111,7 @@ GymControl/
 └── README.md
 ```
 
-La organización del código permite separar los modelos, pantallas, servicios y manejo de estado utilizados por la aplicación.
+La organización del proyecto permite separar pantallas, modelos, servicios, manejo de estado y comunicación con el backend.
 
 ---
 
@@ -134,311 +123,326 @@ GymControl implementa actualmente las siguientes funcionalidades:
 - Inicio de sesión mediante JWT.
 - Validación de formularios.
 - Manejo de credenciales incorrectas.
-- Manejo del estado de autenticación mediante Provider.
+- Manejo del estado mediante Provider.
 - Protección de funcionalidades privadas.
-- Navegación entre diferentes módulos.
 - Gestión de rutinas.
 - Gestión de ejercicios.
 - Gestión de entrenamientos.
 - Registro del peso corporal.
 - Consulta del historial de peso.
 - Gestión de recordatorios.
+- Calendario.
+- Seguimiento del progreso.
 - Visualización y actualización del perfil.
-- Persistencia del estado del usuario durante la navegación.
-- Cierre de sesión.
-- Protección del acceso después del cierre de sesión.
-- Procesamiento de tareas en segundo plano.
+- Fotografía de perfil mediante cámara.
+- Persistencia local de la fotografía.
+- Notificaciones locales.
+- Manejo de permisos nativos.
+- Acceso directo a ajustes cuando un permiso está bloqueado.
+- Degradación controlada ante permisos no disponibles.
 - Comunicación entre Flutter y la API Flask.
+- Cierre de sesión seguro.
+
+---
+
+# 📱 Funcionalidades nativas – Semana 14
+
+Durante la Semana 14 se incorporaron dos funcionalidades nativas principales al prototipo de GymControl:
+
+1. **Cámara para fotografía de perfil.**
+2. **Notificaciones locales para recordatorios.**
+
+Las funcionalidades fueron probadas directamente en un **dispositivo Android físico**.
+
+---
+
+# 📷 Cámara y fotografía de perfil
+
+GymControl permite utilizar la cámara del dispositivo para tomar una fotografía de perfil.
+
+El permiso de cámara se solicita únicamente cuando el usuario intenta utilizar esta funcionalidad.
+
+Si el permiso es concedido, GymControl abre la cámara del dispositivo y permite tomar una fotografía.
+
+La imagen se copia al directorio de documentos de la aplicación y su ruta se conserva localmente mediante **SharedPreferences**.
+
+Esto permite que la fotografía permanezca disponible después de salir del perfil y volver a ingresar.
+
+Si el permiso está bloqueado o denegado permanentemente, GymControl muestra un mensaje informativo y proporciona la opción:
+
+```text
+Abrir ajustes
+```
+
+Esta opción dirige al usuario hacia la configuración de Android para que pueda modificar manualmente el permiso.
+
+La selección desde la galería utiliza el selector del sistema, evitando solicitar permisos amplios innecesarios sobre los archivos del dispositivo.
+
+---
+
+# 🔔 Notificaciones locales
+
+GymControl incorpora notificaciones locales para los recordatorios relacionados con rutinas y entrenamientos.
+
+El permiso de notificaciones se gestiona cuando el usuario utiliza la funcionalidad de recordatorios.
+
+Si el permiso está disponible, el recordatorio puede ser guardado y programado mediante el sistema de notificaciones del dispositivo.
+
+Cuando las notificaciones están bloqueadas, GymControl muestra un mensaje informativo y ofrece acceso directo a los ajustes del sistema.
+
+Aunque las notificaciones estén deshabilitadas, la aplicación continúa funcionando y permite utilizar sus demás funcionalidades.
+
+---
+
+# 🔐 Manejo de permisos
+
+GymControl implementa el manejo de permisos mediante el plugin:
+
+```text
+permission_handler
+```
+
+Los permisos utilizados en Android son:
+
+```xml
+<uses-permission android:name="android.permission.INTERNET"/>
+<uses-permission android:name="android.permission.CAMERA"/>
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+```
+
+Estos permisos se encuentran declarados en:
+
+```text
+android/app/src/main/AndroidManifest.xml
+```
+
+La aplicación evita solicitar permisos nativos innecesariamente al iniciar.
+
+Los permisos relacionados con las funcionalidades implementadas se gestionan cuando el usuario intenta utilizar la capacidad correspondiente.
+
+---
+
+# 📦 Plugins utilizados para funcionalidades nativas
+
+Para la incorporación de las funcionalidades nativas se utilizaron:
+
+- `permission_handler`
+- `image_picker`
+- `flutter_local_notifications`
+- `flutter_timezone`
+- `shared_preferences`
+
+## permission_handler
+
+Permite consultar y gestionar el estado de los permisos del dispositivo.
+
+## image_picker
+
+Permite utilizar la cámara y el selector de imágenes del sistema.
+
+## flutter_local_notifications
+
+Permite programar y administrar notificaciones locales.
+
+## flutter_timezone
+
+Permite trabajar con la zona horaria del dispositivo para la programación de notificaciones.
+
+## shared_preferences
+
+Permite conservar información local necesaria para mantener la fotografía de perfil.
+
+---
+
+# ⚠️ Degradación controlada
+
+GymControl está diseñado para continuar funcionando aunque el usuario no conceda alguno de los permisos nativos.
+
+## Cámara sin permiso
+
+Si la cámara no está disponible:
+
+- La aplicación no se cierra.
+- Se informa al usuario.
+- Se mantiene disponible el resto de GymControl.
+- Si el permiso está bloqueado, se ofrece acceso a los ajustes del sistema.
+
+## Notificaciones sin permiso
+
+Si las notificaciones están deshabilitadas:
+
+- GymControl continúa funcionando.
+- Los demás módulos permanecen disponibles.
+- Se informa al usuario sobre el estado del permiso.
+- Se proporciona acceso directo a los ajustes del sistema.
+
+De esta manera, la ausencia de una capacidad nativa no impide utilizar la funcionalidad principal de la aplicación.
+
+---
+
+# 🤖 Configuración Android
+
+La configuración utilizada actualmente por GymControl es:
+
+```text
+targetSdkVersion: 36
+compileSdk: 37
+```
+
+El proyecto utiliza como objetivo **Android 16 mediante API 36**.
+
+Los permisos nativos correspondientes se encuentran configurados en `AndroidManifest.xml`.
+
+---
+
+# 🍎 Configuración iOS
+
+Para el uso de la cámara se incorporó la descripción correspondiente en:
+
+```text
+ios/Runner/Info.plist
+```
+
+Con una descripción de propósito para informar al usuario por qué GymControl requiere acceso a la cámara.
+
+Las notificaciones utilizan el mecanismo de autorización proporcionado por el sistema operativo.
+
+---
+
+# 🧪 Pruebas en dispositivo físico
+
+Las funcionalidades nativas de GymControl fueron verificadas en un **dispositivo Android físico**.
+
+Se comprobaron los siguientes casos:
+
+## Caso 1 – Permiso concedido
+
+Se concedió el permiso de cámara y se verificó:
+
+- Apertura de la cámara.
+- Captura de fotografía.
+- Actualización de la fotografía del perfil.
+- Persistencia local de la imagen.
+
+También se concedió el permiso de notificaciones y se verificó la gestión de recordatorios.
+
+## Caso 2 – Permiso denegado
+
+Se comprobó el comportamiento de GymControl cuando el usuario no concede un permiso solicitado.
+
+La aplicación permanece operativa y muestra información comprensible al usuario.
+
+## Caso 3 – Permiso bloqueado o denegado permanentemente
+
+Se comprobó que GymControl detecta el estado del permiso y proporciona acceso directo a los ajustes del sistema.
+
+## Caso 4 – Permiso revocado desde Ajustes
+
+Se revocaron permisos desde la configuración de Android y posteriormente se volvió a utilizar la funcionalidad correspondiente.
+
+GymControl detectó correctamente el nuevo estado del permiso.
+
+## Caso 5 – Capacidad nativa no disponible
+
+Se comprobó que la aplicación mantiene operativa su funcionalidad principal aunque la cámara o las notificaciones no estén disponibles.
+
+No se produce el cierre inesperado de GymControl.
+
+---
+
+# 💾 Persistencia local
+
+La fotografía de perfil seleccionada por el usuario se almacena localmente dentro del espacio de la aplicación.
+
+La ruta correspondiente se conserva mediante SharedPreferences.
+
+Al salir del perfil y volver a ingresar, la fotografía permanece disponible.
+
+---
+
+# 🌐 Integración con backend
+
+GymControl mantiene comunicación con el backend desarrollado en Flask.
+
+La aplicación utiliza una variable de entorno para definir la URL base:
+
+```dart
+static const String apiRootUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'http://127.0.0.1:5000',
+);
+```
+
+Durante las pruebas en el dispositivo Android físico se utilizó la comunicación mediante el puerto local del backend.
+
+Para comprobar la conexión se dispone del endpoint:
+
+```text
+GET /api/v1/health
+```
+
+Cuando la comunicación funciona correctamente, GymControl muestra:
+
+```text
+GymControl Backend - estado: ok
+```
+
+Los recordatorios también forman parte de las funcionalidades gestionadas mediante los servicios de la aplicación y su API.
 
 ---
 
 # 🔑 Autenticación de usuarios
 
-GymControl implementa un flujo de autenticación conectado directamente con el backend desarrollado en Flask.
+GymControl implementa autenticación conectada directamente con el backend Flask.
 
-El usuario puede registrarse mediante la aplicación y posteriormente utilizar sus credenciales para iniciar sesión.
+El usuario puede registrarse y posteriormente utilizar sus credenciales para iniciar sesión.
 
-Durante el inicio de sesión, Flutter envía las credenciales al backend. Si son correctas, la API devuelve la información correspondiente al usuario y los tokens de autenticación necesarios para realizar solicitudes protegidas.
+Cuando las credenciales son correctas, la API devuelve la información del usuario y los tokens necesarios para realizar solicitudes protegidas.
 
-Cuando la autenticación es correcta, la aplicación permite acceder al Dashboard y a las funcionalidades privadas de GymControl.
-
-Cuando las credenciales son incorrectas, la aplicación no permite el acceso y muestra un mensaje comprensible al usuario.
-
-Ejemplo:
-
-```text
-El correo o la contraseña son incorrectos.
-```
-
----
-
-# 📝 Formularios y validaciones
-
-Los formularios de registro e inicio de sesión implementan validaciones antes de enviar información al backend.
-
-## Inicio de sesión
-
-El formulario comprueba:
-
-- Correo electrónico obligatorio.
-- Contraseña obligatoria.
-- Formato válido del correo electrónico.
-- Longitud mínima de la contraseña.
-- Credenciales válidas.
-
-Al dejar los campos vacíos se muestran mensajes como:
-
-```text
-El correo electrónico es obligatorio.
-La contraseña es obligatoria.
-```
-
-Cuando el correo no posee un formato válido se muestra:
-
-```text
-Ingrese un correo electrónico válido.
-```
-
-## Registro
-
-El formulario de creación de cuenta comprueba:
-
-- Nombre obligatorio.
-- Nombre con una longitud mínima.
-- Correo electrónico obligatorio.
-- Formato válido del correo.
-- Contraseña obligatoria.
-- Longitud mínima de la contraseña.
-
-Ejemplos de mensajes:
-
-```text
-El nombre es obligatorio.
-El correo electrónico es obligatorio.
-La contraseña es obligatoria.
-```
-
-Estas validaciones evitan enviar información incompleta o con un formato incorrecto al backend.
+La aplicación utiliza **JWT** para proteger las operaciones que requieren autenticación.
 
 ---
 
 # 🧠 Manejo de estado con Provider
 
-GymControl utiliza **Provider** como mecanismo para administrar el estado de autenticación de la aplicación.
+GymControl utiliza **Provider** para administrar el estado de autenticación.
 
-La dependencia utilizada es:
-
-```text
-provider: ^6.1.5+1
-```
-
-La clase responsable del estado de sesión se encuentra en:
+La clase principal se encuentra en:
 
 ```text
 lib/providers/session_provider.dart
 ```
 
-`SessionProvider` extiende `ChangeNotifier` y mantiene información relacionada con el usuario autenticado.
-
-Entre los datos administrados se encuentran:
+`SessionProvider` mantiene información relacionada con:
 
 - Identificador del usuario.
-- Nombre del usuario.
+- Nombre.
 - Correo electrónico.
 - Estado de autenticación.
 
-Cuando el usuario inicia sesión correctamente, los datos recibidos desde el backend son almacenados en `SessionProvider`.
-
-Esto permite conservar la información del usuario mientras navega entre diferentes pantallas de GymControl.
-
-Cuando el estado cambia se utiliza:
+Los cambios de estado son comunicados mediante:
 
 ```dart
 notifyListeners();
 ```
 
-De esta manera, los componentes que dependen del estado pueden reaccionar ante los cambios realizados en la sesión.
-
----
-
-# 🧭 Navegación
-
-GymControl permite navegar entre diferentes funcionalidades después de iniciar sesión.
-
-Entre las principales pantallas disponibles se encuentran:
-
-- Dashboard.
-- Rutinas.
-- Entrenamientos.
-- Calendario.
-- Recordatorios.
-- Progreso.
-- Peso.
-- Perfil.
-- Optimización.
-
-Durante las pruebas se verificó especialmente el siguiente flujo:
-
-```text
-Login
-  ↓
-Dashboard
-  ↓
-Rutinas
-  ↓
-Dashboard
-  ↓
-Peso
-  ↓
-Dashboard
-  ↓
-Perfil
-```
-
-Durante este recorrido la sesión permanece activa y la información del usuario continúa disponible.
+Esto permite mantener la información del usuario durante la navegación.
 
 ---
 
 # 🔒 Protección de funcionalidades
 
-Las funcionalidades privadas de GymControl requieren que exista una sesión autenticada.
+Las funcionalidades privadas requieren una sesión autenticada.
 
-El Dashboard consulta el estado administrado por `SessionProvider`.
+Si no existe una sesión válida, el usuario es dirigido al inicio de sesión.
 
-Si no existe una sesión válida, el usuario es redirigido a:
-
-```text
-/login
-```
-
-Antes de abrir funcionalidades privadas también se comprueba el estado de autenticación.
-
-De esta manera, un usuario que no haya iniciado sesión no debe acceder al contenido protegido de la aplicación.
-
----
-
-# 🚪 Cierre de sesión
-
-GymControl permite finalizar la sesión desde las funcionalidades correspondientes, incluyendo el perfil del usuario.
-
-Antes de cerrar la sesión se solicita confirmación.
-
-Al confirmar el cierre:
-
-1. Se eliminan los datos de autenticación utilizados por la aplicación.
-2. Se limpia la información almacenada en `SessionProvider`.
-3. El estado de autenticación cambia a no autenticado.
-4. Se elimina la navegación anterior correspondiente al área protegida.
-5. El usuario es enviado nuevamente al inicio de sesión.
-
-Después de cerrar sesión se comprobó que utilizar la navegación anterior del navegador no permite recuperar el Dashboard o las funcionalidades privadas.
-
-Para acceder nuevamente es necesario iniciar sesión.
-
----
-
-# ⚙️ Configuración del entorno de desarrollo
-
-## Versiones verificadas
-
-El entorno utilizado para desarrollar y ejecutar GymControl cuenta con las siguientes versiones:
-
-```text
-Flutter: 3.44.6
-Dart: 3.12.2
-DevTools: 2.57.0
-Android SDK: 36.0.0
-Java: OpenJDK 21
-Visual Studio: Community 2026
-Sistema operativo: Windows 11 Pro 64-bit
-```
-
----
-
-# 🖥️ Editor y extensiones
-
-Para el desarrollo del proyecto se utilizó **Visual Studio Code** como editor de código.
-
-Las principales extensiones utilizadas son:
-
-- Flutter
-- Dart
-
-Estas extensiones permiten integrar las herramientas del SDK de Flutter con Visual Studio Code, ejecutar la aplicación, utilizar Hot Reload, depurar el código y facilitar el desarrollo en Dart.
-
-También se utilizó **Android Studio** para disponer del Android SDK y de la cadena de herramientas necesaria para el desarrollo de aplicaciones Android.
-
-Para completar la cadena de herramientas de Windows se instaló **Visual Studio Community 2026** con los componentes de desarrollo de escritorio con C++ requeridos por Flutter.
-
----
-
-# 🔍 Verificación del entorno
-
-Para comprobar la instalación y configuración de Flutter se utiliza:
-
-```powershell
-flutter doctor -v
-```
-
-Después de instalar y configurar todas las herramientas necesarias, el diagnóstico final confirmó correctamente:
-
-- Flutter.
-- Dart.
-- Android SDK.
-- Java.
-- Google Chrome.
-- Visual Studio Community 2026.
-- Windows SDK.
-- Dispositivos disponibles.
-- Recursos de red.
-
-El resultado final del diagnóstico fue:
-
-```text
-No issues found!
-```
-
-Esto confirma que el entorno de desarrollo requerido por Flutter se encuentra correctamente configurado.
-
-También se pueden consultar los dispositivos disponibles mediante:
-
-```powershell
-flutter devices
-```
-
-Durante las pruebas se detectaron los siguientes destinos:
-
-- Windows Desktop.
-- Google Chrome (Web).
-- Microsoft Edge (Web).
-
-Para las pruebas se seleccionó **Google Chrome** como destino principal de ejecución, debido a que permite ejecutar y comprobar el proyecto mediante Flutter Web utilizando los recursos disponibles en el equipo.
-
-Además, Chrome facilita las pruebas de comunicación entre la aplicación Flutter y el backend Flask ejecutado localmente.
-
----
-
-# 📦 Instalación de dependencias Flutter
-
-Desde la carpeta principal del proyecto ejecutar:
-
-```powershell
-flutter pub get
-```
-
-Este comando instala las dependencias declaradas en el archivo `pubspec.yaml`.
-
-Entre las dependencias utilizadas se encuentra Provider para el manejo del estado:
-
-```text
-provider: ^6.1.5+1
-```
+Al cerrar sesión se elimina la información de autenticación y se impide volver a acceder a las pantallas protegidas sin autenticarse nuevamente.
 
 ---
 
 # ▶️ Ejecución del backend
 
-Ingresar a la carpeta del backend:
+Ingresar a la carpeta:
 
 ```powershell
 cd backend
@@ -450,406 +454,116 @@ Activar el entorno virtual:
 .\venv\Scripts\Activate.ps1
 ```
 
-Instalar las dependencias cuando sea necesario:
-
-```powershell
-pip install -r requirements.txt
-```
-
-Ejecutar el backend:
+Ejecutar:
 
 ```powershell
 py run.py
 ```
 
-El servidor local queda disponible en:
+El backend local queda disponible en:
 
 ```text
 http://127.0.0.1:5000
 ```
 
-Cuando Flask se encuentra funcionando correctamente, la terminal muestra que el servidor está disponible en el puerto 5000.
-
 ---
 
-# 🌐 Configuración de la URL de la API
+# 📲 Ejecución en dispositivo Android físico
 
-GymControl utiliza una variable de entorno de compilación para definir la dirección base de la API.
-
-En el archivo:
-
-```text
-lib/services/api_service.dart
-```
-
-se utiliza:
-
-```dart
-static const String apiRootUrl = String.fromEnvironment(
-  'API_BASE_URL',
-  defaultValue: 'http://127.0.0.1:5000',
-);
-
-static const String baseUrl = '$apiRootUrl/api/v1';
-```
-
-Para ejecutar Flutter Web indicando la dirección del backend se utiliza:
+Con el dispositivo conectado mediante USB se puede comprobar mediante:
 
 ```powershell
-flutter run -d chrome --web-port 8080 --dart-define=API_BASE_URL=http://127.0.0.1:5000
+adb devices
 ```
 
-De esta manera, el entorno utilizado durante la prueba queda configurado de la siguiente forma:
-
-```text
-Flutter Web: http://localhost:8080
-Backend Flask: http://127.0.0.1:5000
-```
-
-El puerto 8080 se establece de forma fija para mantener un origen conocido durante las pruebas de comunicación con el backend.
-
-La utilización de `API_BASE_URL` permite modificar la dirección del servidor sin cambiar directamente el código de la aplicación.
-
----
-
-# 🔐 Configuración de CORS
-
-Durante el desarrollo se configuró CORS de manera limitada para permitir únicamente las solicitudes provenientes del entorno local utilizado por Flutter Web.
-
-En el backend Flask se utiliza:
-
-```python
-cors.init_app(
-    app,
-    resources={
-        r"/api/*": {
-            "origins": "http://localhost:8080",
-        },
-    },
-)
-```
-
-Esta configuración evita utilizar un origen abierto para todas las solicitudes y limita el acceso al origen local utilizado durante el desarrollo.
-
-Por lo tanto:
-
-```text
-Origen autorizado:
-http://localhost:8080
-```
-
-De esta manera se autoriza de forma acotada el tráfico desde Flutter Web hacia el backend local.
-
----
-
-# 🔄 Hot Reload
-
-Flutter permite aplicar cambios en la aplicación sin reiniciar completamente su ejecución.
-
-Primero se ejecuta la aplicación:
+Para permitir que el dispositivo físico acceda al backend local mediante USB se utiliza:
 
 ```powershell
-flutter run -d chrome --web-port 8080 --dart-define=API_BASE_URL=http://127.0.0.1:5000
+adb reverse tcp:5000 tcp:5000
 ```
 
-Mientras `flutter run` se encuentra activo, se utiliza:
-
-```text
-r
-```
-
-La terminal confirma la operación mediante un mensaje similar a:
-
-```text
-Performing hot reload...
-Reloaded application...
-```
-
-Esta funcionalidad facilita las pruebas y permite visualizar rápidamente los cambios realizados en el código.
-
-Durante las pruebas de GymControl se comprobó correctamente el funcionamiento de Hot Reload.
-
-Cuando se requiere reiniciar completamente el estado de la aplicación se puede utilizar:
-
-```text
-R
-```
-
-para realizar Hot Restart.
-
----
-
-# 🔗 Verificación de conexión con el backend
-
-Para comprobar la comunicación entre Flutter y Flask se implementó el endpoint:
-
-```text
-GET /api/v1/health
-```
-
-La aplicación realiza una solicitud HTTP hacia:
-
-```text
-http://127.0.0.1:5000/api/v1/health
-```
-
-El endpoint devuelve información sobre el estado del servicio, caché y worker del backend.
-
-Un ejemplo de la información devuelta por el backend es:
-
-```json
-{
-  "service": "GymControl Backend",
-  "status": "ok",
-  "cache": "SimpleCache",
-  "worker": "activo"
-}
-```
-
-Desde Flutter se implementó una función encargada de realizar la solicitud HTTP hacia este endpoint.
-
-En la interfaz de GymControl se agregó el botón:
-
-```text
-Probar conexión con API
-```
-
-Al presionarlo, Flutter realiza la solicitud hacia Flask.
-
-Cuando la comunicación es exitosa, el backend responde con estado HTTP:
-
-```text
-200 OK
-```
-
-Y la aplicación muestra:
-
-```text
-GymControl Backend - estado: ok
-```
-
-Esta prueba comprueba que la aplicación Flutter puede realizar una solicitud hacia un endpoint de su propia API y recibir correctamente la respuesta enviada por el backend Flask.
-
----
-
-# 🔐 Autenticación con el backend
-
-El inicio de sesión de GymControl utiliza la API Flask para comprobar las credenciales del usuario.
-
-Flutter envía el correo y la contraseña al endpoint de autenticación correspondiente.
-
-Cuando la autenticación es correcta, el backend devuelve los datos del usuario y los tokens correspondientes.
-
-Posteriormente, las solicitudes que requieren autenticación utilizan el token JWT.
-
-El estado del usuario autenticado también se registra en `SessionProvider` para mantener la información disponible durante la navegación.
-
----
-
-# ⚠️ Tratamiento de sesión no válida
-
-Cuando una solicitud protegida devuelve un estado HTTP **401**, la aplicación interpreta que la autenticación ya no es válida.
-
-En este caso se procede a cerrar la sesión y redirigir al usuario nuevamente al inicio de sesión.
-
-Esto evita mantener al usuario dentro de una funcionalidad protegida cuando su autenticación ya no es válida.
-
----
-
-# ⚡ Optimizaciones implementadas
-
-Durante el desarrollo del proyecto se aplicaron diversas optimizaciones al backend:
-
-- Implementación de Cache Aside.
-- Corrección del problema N+1 mediante Eager Loading (`joinedload()`).
-- Procesamiento asíncrono mediante un worker.
-- Optimización del proceso de autenticación con JWT.
-- Reducción de consultas repetidas hacia PostgreSQL.
-
----
-
-# 🛡️ Seguridad
-
-La aplicación implementa:
-
-- Autenticación mediante JWT.
-- Protección de funcionalidades privadas.
-- Contraseñas almacenadas mediante hash en el backend.
-- Validación de usuarios autenticados.
-- Validaciones en formularios.
-- Manejo del estado de autenticación.
-- Limpieza de la sesión durante el logout.
-- Variables de entorno para configuración.
-- Restricción CORS durante el desarrollo.
-- Control del acceso después de cerrar sesión.
-
-No se deben almacenar contraseñas, claves privadas ni otras credenciales sensibles directamente dentro del repositorio público.
-
----
-
-# ⚠️ Limitaciones y dificultades encontradas
-
-Durante la configuración y desarrollo se presentaron algunas dificultades que fueron solucionadas.
-
-Inicialmente, Google Chrome bloqueó la solicitud realizada desde Flutter debido a la política CORS y se presentó el error:
-
-```text
-Failed to fetch
-```
-
-Para solucionarlo se configuró Flask-CORS y se autorizó específicamente el origen local:
-
-```text
-http://localhost:8080
-```
-
-También fue necesario establecer el puerto 8080 de manera fija para Flutter Web, permitiendo mantener un origen conocido durante las pruebas y configurar correctamente CORS.
-
-Otra dificultad presentada fue encontrar el puerto 8080 ocupado por una ejecución anterior de Flutter. Para solucionarlo se cerró la sesión anterior antes de volver a ejecutar la aplicación.
-
-Durante el diagnóstico inicial mediante:
+Posteriormente GymControl puede ejecutarse indicando la dirección de la API:
 
 ```powershell
-flutter doctor -v
+flutter run -d <ID_DISPOSITIVO> --dart-define=API_BASE_URL=http://127.0.0.1:5000
 ```
-
-se detectó que Visual Studio no se encontraba instalado para el desarrollo de aplicaciones Windows.
-
-Para resolver este hallazgo se instaló **Visual Studio Community 2026** con la carga de trabajo correspondiente al desarrollo de escritorio con C++ y los componentes necesarios.
-
-Después de completar la instalación y reiniciar el equipo, se ejecutó nuevamente:
-
-```powershell
-flutter doctor -v
-```
-
-El diagnóstico reconoció correctamente Visual Studio y todos los demás componentes del entorno.
-
-El resultado final fue:
-
-```text
-No issues found!
-```
-
-De esta manera se resolvieron todos los hallazgos reportados por el comando de diagnóstico de Flutter.
-
-Durante la implementación del flujo de autenticación también fue necesario incorporar un mecanismo centralizado de manejo de estado. Para ello se agregó **Provider** y se creó `SessionProvider`, permitiendo mantener la información del usuario durante la navegación y limpiarla correctamente al cerrar sesión.
 
 ---
 
-# 🧪 Pruebas realizadas
+# 🧪 Verificaciones realizadas
 
-Se verificó el funcionamiento de:
+Durante el desarrollo y las pruebas se comprobó:
 
-## Entorno
-
-- Configuración del entorno Flutter.
-- Instalación de Flutter SDK y Dart.
-- Configuración de Visual Studio Code.
-- Extensiones Flutter y Dart.
-- Android SDK.
-- Visual Studio Community 2026.
-- Ejecución de `flutter doctor -v`.
-- Diagnóstico final `No issues found!`.
-- Detección de dispositivos mediante `flutter devices`.
-- Ejecución del proyecto Flutter en Google Chrome.
-- Funcionamiento de Hot Reload y Hot Restart.
-
-## Backend y comunicación
-
+- Ejecución de Flutter.
 - Ejecución del backend Flask.
-- API REST mediante Postman.
-- Configuración de `API_BASE_URL`.
-- Configuración limitada de CORS.
 - Comunicación Flutter → Flask.
 - Endpoint `/api/v1/health`.
-- Respuesta HTTP 200 del backend.
-- Visualización del mensaje `GymControl Backend - estado: ok`.
-
-## Autenticación y formularios
-
 - Registro de usuarios.
-- Validación de campos obligatorios en el registro.
-- Validación del formato del correo electrónico.
-- Validación de longitud mínima de contraseña.
 - Inicio de sesión.
-- Validación de campos obligatorios en el login.
-- Detección de credenciales incorrectas.
-- Inicio de sesión con un usuario válido.
-- Acceso al Dashboard después de autenticarse.
-
-## Navegación y manejo de estado
-
-- Manejo del estado mediante Provider.
-- Funcionamiento de `SessionProvider`.
-- Persistencia de la información del usuario durante la navegación.
-- Navegación entre Dashboard y Rutinas.
-- Navegación entre Dashboard y Peso.
-- Navegación entre Dashboard y Perfil.
-- Visualización de los datos del usuario en el perfil.
-- Acceso a funcionalidades protegidas únicamente con sesión activa.
-
-## Cierre de sesión
-
-- Confirmación antes del cierre de sesión.
-- Eliminación de la información de autenticación.
-- Limpieza del estado de `SessionProvider`.
-- Redirección al inicio de sesión.
-- Intento de regresar mediante la navegación anterior después del logout.
-- Bloqueo del acceso a las funcionalidades protegidas sin volver a autenticarse.
-
-## Funcionalidades del proyecto
-
+- Validación de formularios.
+- Manejo de estado con Provider.
 - Gestión de rutinas.
 - Gestión de ejercicios.
 - Gestión de entrenamientos.
 - Registro de peso.
-- Historial de peso.
 - Perfil de usuario.
-- Recordatorios.
-- Calendario.
-- Progreso.
+- Persistencia de fotografía.
+- Cámara en dispositivo físico.
+- Permiso de cámara concedido.
+- Permiso de cámara denegado.
+- Permiso de cámara bloqueado.
+- Acceso directo a ajustes.
+- Notificaciones locales.
+- Permiso de notificaciones concedido.
+- Notificaciones bloqueadas.
+- Degradación controlada.
+- Gestión de recordatorios.
+- Comunicación con el backend.
+- Cierre de sesión.
 
 ---
 
 # 📖 Documentación
 
-La documentación técnica del proyecto se encuentra en la carpeta **docs/**.
+La documentación técnica complementaria del proyecto se encuentra en la carpeta:
 
-- Constitución del Proyecto.
-- Software Design Description (SDD).
+```text
+docs/
+```
+
+Esta documentación describe aspectos relacionados con:
+
+- Constitución del proyecto.
+- Software Design Description.
 - Arquitectura.
 - API REST.
 - Optimizaciones.
 - Pruebas.
 
-Esta documentación complementa el README y describe diferentes aspectos técnicos relacionados con el desarrollo de GymControl.
-
 ---
 
-# 📹 Video de demostración
+# 📹 Video de demostración – Semana 14
 
-El video correspondiente al flujo de autenticación, navegación, manejo de estado y formularios demuestra:
+El video correspondiente a la Semana 14 demuestra:
 
-1. Ejecución de GymControl.
-2. Formulario de registro.
-3. Validaciones de campos obligatorios.
-4. Validación del formato del correo.
-5. Formulario de inicio de sesión.
-6. Comportamiento frente a credenciales incorrectas.
-7. Autenticación correcta.
-8. Acceso al Dashboard protegido.
-9. Navegación entre al menos tres funcionalidades.
-10. Persistencia de la información del usuario durante la navegación.
-11. Manejo del estado mediante Provider y `SessionProvider`.
-12. Organización del código en pantallas, servicios, modelos y providers.
-13. Cierre de sesión.
-14. Intento de acceso a una funcionalidad protegida después del logout.
-15. Código actualizado en el repositorio GitHub.
+1. Ejecución de GymControl en un dispositivo Android físico.
+2. Comunicación con el backend.
+3. Uso de la cámara con permiso concedido.
+4. Captura y persistencia de la fotografía de perfil.
+5. Comportamiento de la cámara sin permiso.
+6. Detección de permiso bloqueado.
+7. Acceso directo a los ajustes de Android.
+8. Funcionamiento de las notificaciones locales.
+9. Gestión de recordatorios.
+10. Comportamiento cuando las notificaciones están bloqueadas.
+11. Degradación controlada.
+12. Configuración de permisos en Android.
+13. Configuración de `targetSdkVersion` y `compileSdk`.
+14. Código actualizado en GitHub.
 
 ## Enlace del video
 
-Agregar el enlace del video cuando esté disponible:
+Agregar el enlace cuando el video se encuentre publicado:
 
 ```text
 https://colocar-aqui-el-enlace-del-video
@@ -861,7 +575,13 @@ https://colocar-aqui-el-enlace-del-video
 
 El código fuente de GymControl se encuentra almacenado y versionado mediante Git y GitHub.
 
-Los cambios correspondientes a autenticación, navegación, manejo de estado, validaciones y protección de funcionalidades se encuentran integrados en la rama principal del proyecto.
+Repositorio:
+
+```text
+https://github.com/UEADAVID24/GymControl1.git
+```
+
+Los cambios correspondientes a las funcionalidades nativas, manejo de permisos, cámara, notificaciones, persistencia local y pruebas de la Semana 14 se encuentran integrados en la rama principal del proyecto.
 
 ---
 
@@ -869,8 +589,7 @@ Los cambios correspondientes a autenticación, navegación, manejo de estado, va
 
 **Clinton David Alvarado Chongo**
 
-Universidad Estatal Amazónica
-
+Universidad Estatal Amazónica  
 Carrera de Ingeniería en Tecnologías de la Información
 
 ---
